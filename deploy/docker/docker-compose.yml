@@ -1,0 +1,184 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: idp
+      POSTGRES_PASSWORD: idp
+      POSTGRES_DB: idp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+      - ../../scripts/seed_prompts.sql:/docker-entrypoint-initdb.d/002_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U idp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb -p local/idp-artifacts-dev || true;
+      exit 0;
+      "
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    command: ["--config=/etc/otel-collector/config.yaml"]
+    volumes:
+      - ../../infra/monitoring/otel-collector/config.yaml:/etc/otel-collector/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    volumes:
+      - ../../infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ../../infra/monitoring/prometheus/rules:/etc/prometheus/rules
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-lifecycle"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ../../infra/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
+
+  pushgateway:
+    image: prom/pushgateway:v1.7.0
+    ports:
+      - "9091:9091"
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ../../infra/monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ../../infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  idp-app:
+    build:
+      context: ../..
+      dockerfile: services/idp-app/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://idp:idp@postgres:5432/idp
+      REDIS_URL: redis://redis:6379/0
+      ORCHESTRATOR_URL: http://idp-orchestrator:8001
+      OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+      ENV: dev
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      idp-orchestrator:
+        condition: service_started
+
+  idp-orchestrator:
+    build:
+      context: ../..
+      dockerfile: services/idp-orchestrator/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      EXTRACTION_URL: http://idp-extraction:8003
+      APP_INTERNAL_URL: http://idp-app:8000
+      BATCH_MAX_SIZE: "48"
+      BATCH_MAX_WAIT_MS: "500"
+      OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+      ENV: dev
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      idp-extraction:
+        condition: service_started
+
+  idp-preprocess:
+    build:
+      context: ../..
+      dockerfile: services/idp-preprocess/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      GCS_BUCKET: idp-artifacts-dev
+      GCS_EMULATOR_HOST: http://minio:9000
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_ALLOWED_BUCKETS: ${FIREBASE_ALLOWED_BUCKETS:-}
+      ALLOWED_IMAGE_HOSTS: ${ALLOWED_IMAGE_HOSTS:-firebasestorage.googleapis.com,storage.googleapis.com}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+      FRAUD_ENABLED: "true"
+      DOCTAMPER_CHECKPOINT: /models/mit_unet_doctamper_best.pt
+      OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+      ENV: dev
+    ports:
+      - "8002:8002"
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  idp-extraction:
+    build:
+      context: ../..
+      dockerfile: services/idp-extraction/Dockerfile
+    environment:
+      MOCK_MODE: "true"
+      GCS_BUCKET: idp-artifacts-dev
+      GCS_EMULATOR_HOST: http://minio:9000
+      DEFAULT_PROMPT_MODE: reasoning_vir
+      MAX_NEW_TOKENS: "1024"
+      TEMPERATURE: "0.0"
+      ENV: dev
+    ports:
+      - "8003:8003"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  miniodata:

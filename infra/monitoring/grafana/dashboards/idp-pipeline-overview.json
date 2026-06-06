@@ -1,0 +1,51 @@
+{
+  "title": "IDP Pipeline Overview",
+  "uid": "idp-pipeline",
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "Jobs by status",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(idp_jobs_total[5m])) by (status)", "legendFormat": "{{status}}"}
+      ]
+    },
+    {
+      "title": "Stage latency p95",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "idp:e2e_latency:p95", "legendFormat": "p95"}
+      ]
+    },
+    {
+      "title": "Batch utilization (size/48)",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "targets": [{"expr": "idp_batch_utilization_ratio"}]
+    },
+    {
+      "title": "Extraction tokens/sec",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 8},
+      "targets": [
+        {"expr": "idp_extraction_tokens_per_second", "legendFormat": "actual"},
+        {"expr": "472.84", "legendFormat": "baseline BS48"}
+      ]
+    },
+    {
+      "title": "Fraud detections",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 16},
+      "targets": [{"expr": "sum(increase(idp_fraud_detected_total[24h]))"}]
+    },
+    {
+      "title": "Circuit breaker state",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 16},
+      "targets": [{"expr": "idp_circuit_breaker_state"}]
+    }
+  ],
+  "schemaVersion": 39
+}

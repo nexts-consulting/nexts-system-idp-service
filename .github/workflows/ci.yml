@@ -1,0 +1,32 @@
+name: IDP CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: |
+          pip install uv
+          cd packages/idp-contracts && pip install -e .
+          cd ../idp-common && pip install -e ../idp-contracts && pip install -e .
+          pip install pytest pytest-asyncio httpx jsonschema
+          cd ../../packages/idp-common && pytest -q tests/
+          cd ../../services/idp-orchestrator && pip install -e ../../packages/idp-contracts -e ../../packages/idp-common -e . && pytest -q
+          cd ../idp-app && pip install -e ../../packages/idp-contracts -e ../../packages/idp-common -e . && pytest -q
+          cd ../idp-extraction && pip install -e ../../packages/idp-contracts -e ../../packages/idp-common -e . && pytest -q
+          cd ../idp-preprocess && pip install -e ../../packages/idp-contracts -e ../../packages/idp-common -e . && pytest -q
+
+  baseline-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/perf/baseline_compare.py 500

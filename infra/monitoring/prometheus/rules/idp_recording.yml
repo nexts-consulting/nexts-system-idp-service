@@ -1,0 +1,46 @@
+groups:
+  - name: idp_recording
+    interval: 30s
+    rules:
+      - record: idp:e2e_latency:p95
+        expr: histogram_quantile(0.95, sum(rate(idp_stage_duration_seconds_bucket[5m])) by (le, service))
+
+      - record: idp:extraction_throughput:5m
+        expr: avg(idp_extraction_tokens_per_second)
+
+      - record: idp:batch_efficiency:1h
+        expr: avg(idp_batch_utilization_ratio)
+
+  - name: idp_alerts
+    rules:
+      - alert: ExtractionThroughputDegraded
+        expr: idp_extraction_tokens_per_second < (472.84 * 0.85)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Extraction throughput below 85% of InternVL baseline"
+
+      - alert: BatchUnderfilled
+        expr: avg_over_time(idp_batch_size[1h]) < 16 and idp_redis_stream_lag > 100
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Batch sizes consistently low while queue has backlog"
+
+      - alert: RunPodCircuitOpen
+        expr: idp_circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Extraction circuit breaker is OPEN"
+
+      - alert: HighSchemaValidationFailures
+        expr: rate(idp_schema_validation_failures_total[15m]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated JSON schema validation failures"

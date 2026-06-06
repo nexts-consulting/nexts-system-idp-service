@@ -1,0 +1,35 @@
+openapi: 3.1.0
+info:
+  title: IDP App API
+  version: 0.1.0
+paths:
+  /v1/jobs:
+    post:
+      summary: Create extraction job
+      operationId: createJob
+      responses:
+        "201":
+          description: Job created
+  /v1/jobs/{job_id}:
+    get:
+      summary: Get job status and results
+      operationId: getJob
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+  /v1/rules:
+    post:
+      summary: Create dynamic rule
+      operationId: createRule
+  /v1/prompt-profiles:
+    post:
+      summary: Create prompt profile
+      operationId: createPromptProfile
+  /health:
+    get:
+      summary: Health check
+      operationId: health

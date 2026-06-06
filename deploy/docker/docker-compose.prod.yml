@@ -1,0 +1,101 @@
+# Production compose for GCP app VM.
+# Uses managed Cloud SQL (proxy), Memorystore Redis, GCS — no local postgres/redis/minio.
+# RunPod not ready: idp-extraction runs with MOCK_MODE=true until EXTRACTION_URL points to RunPod.
+
+services:
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
+    command:
+      - "/cloud-sql-proxy"
+      - "--address=0.0.0.0"
+      - "--port=5432"
+      - "${CLOUD_SQL_CONNECTION}"
+    restart: unless-stopped
+
+  idp-app:
+    build:
+      context: ../..
+      dockerfile: services/idp-app/Dockerfile
+    image: ${IMAGE_REGISTRY}idp-app:${IMAGE_TAG}
+    env_file: .env.prod
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      ORCHESTRATOR_URL: http://idp-orchestrator:8001
+      CALLBACK_HMAC_SECRET: ${CALLBACK_HMAC_SECRET}
+      ENV: ${IDP_ENV}
+      OTEL_EXPORTER_ENDPOINT: ${OTEL_EXPORTER_ENDPOINT:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      cloud-sql-proxy:
+        condition: service_started
+      idp-orchestrator:
+        condition: service_started
+    restart: unless-stopped
+
+  idp-orchestrator:
+    build:
+      context: ../..
+      dockerfile: services/idp-orchestrator/Dockerfile
+    image: ${IMAGE_REGISTRY}idp-orchestrator:${IMAGE_TAG}
+    env_file: .env.prod
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      EXTRACTION_URL: ${EXTRACTION_URL}
+      APP_INTERNAL_URL: http://idp-app:8000
+      BATCH_MAX_SIZE: ${BATCH_MAX_SIZE}
+      BATCH_MAX_WAIT_MS: ${BATCH_MAX_WAIT_MS}
+      CIRCUIT_FAILURE_THRESHOLD: ${CIRCUIT_FAILURE_THRESHOLD}
+      CIRCUIT_OPEN_SECONDS: ${CIRCUIT_OPEN_SECONDS}
+      ENV: ${IDP_ENV}
+      OTEL_EXPORTER_ENDPOINT: ${OTEL_EXPORTER_ENDPOINT:-}
+    ports:
+      - "8001:8001"
+    depends_on:
+      idp-extraction:
+        condition: service_started
+    restart: unless-stopped
+
+  idp-preprocess:
+    build:
+      context: ../..
+      dockerfile: services/idp-preprocess/Dockerfile
+    image: ${IMAGE_REGISTRY}idp-preprocess:${IMAGE_TAG}
+    env_file: .env.prod
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      GCS_BUCKET: ${GCS_BUCKET}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_ALLOWED_BUCKETS: ${FIREBASE_ALLOWED_BUCKETS:-}
+      ALLOWED_IMAGE_HOSTS: ${ALLOWED_IMAGE_HOSTS}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
+      DOCTAMPER_CHECKPOINT: ${DOCTAMPER_CHECKPOINT}
+      FRAUD_ENABLED: ${FRAUD_ENABLED}
+      TAMPER_PIXEL_THRESHOLD: ${TAMPER_PIXEL_THRESHOLD}
+      MAX_IMAGE_EDGE: ${MAX_IMAGE_EDGE}
+      ENV: ${IDP_ENV}
+      OTEL_EXPORTER_ENDPOINT: ${OTEL_EXPORTER_ENDPOINT:-}
+    ports:
+      - "8002:8002"
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - ${SECRETS_DIR}:/secrets:ro
+    restart: unless-stopped
+
+  # Temporary until RunPod is live. Remove when EXTRACTION_URL points to RunPod.
+  idp-extraction:
+    build:
+      context: ../..
+      dockerfile: services/idp-extraction/Dockerfile
+    image: ${IMAGE_REGISTRY}idp-extraction:${IMAGE_TAG}
+    environment:
+      MOCK_MODE: "true"
+      GCS_BUCKET: ${GCS_BUCKET}
+      DEFAULT_PROMPT_MODE: reasoning_vir
+      MAX_NEW_TOKENS: "1024"
+      TEMPERATURE: "0.0"
+      ENV: ${IDP_ENV}
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
