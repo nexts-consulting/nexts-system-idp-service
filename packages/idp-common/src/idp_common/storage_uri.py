@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import StrEnum
+from idp_contracts.compat import StrEnum
 from urllib.parse import unquote, urlparse
 
 

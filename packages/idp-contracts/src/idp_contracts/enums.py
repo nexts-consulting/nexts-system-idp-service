@@ -1,4 +1,4 @@
-from enum import StrEnum
+from idp_contracts.compat import StrEnum
 
 
 class JobStatus(StrEnum):
