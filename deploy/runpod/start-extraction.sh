@@ -10,6 +10,8 @@ export LMDEPLOY_URL="${LMDEPLOY_URL:-http://127.0.0.1:23333}"
 export GCS_BUCKET="${GCS_BUCKET:-idp-dev-artifacts}"
 export DEFAULT_PROMPT_MODE="${DEFAULT_PROMPT_MODE:-reasoning_vir}"
 export MODEL_NAME="${MODEL_NAME:-OpenGVLab/InternVL3_5-8B-Flash}"
+# RunPod images often have a broken grpc wheel; leave OTEL off unless collector is reachable.
+export OTEL_EXPORTER_ENDPOINT="${OTEL_EXPORTER_ENDPOINT:-}"
 
 # Ensure workspace packages are importable (editable install recommended once per pod).
 if ! python -c "import idp_extraction" 2>/dev/null; then
