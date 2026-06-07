@@ -182,16 +182,18 @@ class OrchestratorService:
                 self.metrics.extraction_tps.labels(
                     service=self.settings.service_name, env=self.settings.env
                 ).set(total_tokens / elapsed)
+            tenant_by_job = {job.job_id: job.tenant_id for job in jobs}
             for item in data.get("results", []):
                 jid = uuid.UUID(item["job_id"])
+                tenant_id = tenant_by_job.get(str(jid), "default")
                 if item.get("error"):
                     await self._complete_job(
-                        jid, "default", JobStatus.EXTRACTION_FAILED, error=item["error"]
+                        jid, tenant_id, JobStatus.EXTRACTION_FAILED, error=item["error"]
                     )
                 else:
                     await self._complete_job(
                         jid,
-                        "default",
+                        tenant_id,
                         JobStatus.EXTRACTED,
                         extraction_result=item.get("validated_json") or item.get("raw_json"),
                     )
@@ -230,10 +232,17 @@ class OrchestratorService:
         )
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                await client.post(
+                resp = await client.post(
                     f"{self.settings.app_internal_url}/internal/v1/jobs/complete",
                     json=webhook.model_dump(mode="json"),
                 )
+                if resp.status_code >= 400:
+                    logger.error(
+                        "app_webhook_failed",
+                        job_id=str(job_id),
+                        status_code=resp.status_code,
+                        response_body=resp.text[:500],
+                    )
         except Exception as e:
             logger.error("app_webhook_failed", job_id=str(job_id), error=str(e))
 

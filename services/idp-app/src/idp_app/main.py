@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 import httpx
+import structlog
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
 from idp_common.health import router as health_router
@@ -43,6 +44,7 @@ settings = Settings()
 configure_logging(settings.log_level, settings.service_name)
 setup_tracing(settings.service_name, settings.otel_exporter_endpoint)
 metrics = MetricsRegistry(settings.service_name)
+logger = structlog.get_logger()
 
 callback_task: asyncio.Task | None = None
 
@@ -167,6 +169,12 @@ async def get_job_endpoint(job_id: UUID, db: AsyncSession = Depends(get_db)) -> 
 async def job_complete(webhook: JobCompletionWebhook, db: AsyncSession = Depends(get_db)) -> dict:
     job = await get_job(db, webhook.job_id)
     if not job:
+        logger.warning(
+            "job_complete_not_found",
+            job_id=str(webhook.job_id),
+            tenant_id=webhook.tenant_id,
+            status=webhook.status.value,
+        )
         raise HTTPException(404, "Job not found")
 
     status = webhook.status
