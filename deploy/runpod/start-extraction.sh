@@ -10,6 +10,9 @@ export LMDEPLOY_URL="${LMDEPLOY_URL:-http://127.0.0.1:23333}"
 export GCS_BUCKET="${GCS_BUCKET:-idp-dev-artifacts}"
 export DEFAULT_PROMPT_MODE="${DEFAULT_PROMPT_MODE:-reasoning_vir}"
 export MODEL_NAME="${MODEL_NAME:-OpenGVLab/InternVL3_5-8B-Flash}"
+export IDP_EXTRACTION_PORT="${IDP_EXTRACTION_PORT:-8003}"
+# RunPod injects PORT for HTTP proxy (often 23333) — must not bind idp-extraction to it.
+unset PORT
 # RunPod images often have a broken grpc wheel; leave OTEL off unless collector is reachable.
 export OTEL_EXPORTER_ENDPOINT="${OTEL_EXPORTER_ENDPOINT:-}"
 

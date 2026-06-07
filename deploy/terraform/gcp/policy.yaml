@@ -1,0 +1,4 @@
+constraint: constraints/iam.disableServiceAccountKeyCreation
+listPolicy:
+  allowedValues:
+  - "all"
