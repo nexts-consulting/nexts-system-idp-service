@@ -159,10 +159,18 @@ async def save_fraud(session: AsyncSession, job_id: uuid.UUID, data: dict) -> No
     await session.commit()
 
 
-async def save_extraction(session: AsyncSession, job_id: uuid.UUID, data: dict) -> None:
-    er = ExtractionResult(job_id=job_id, **data)
-    session.merge(er)
+async def save_extraction(session: AsyncSession, job_id: uuid.UUID, data: dict) -> ExtractionResult:
+    existing = await session.get(ExtractionResult, job_id)
+    if existing:
+        for key, value in data.items():
+            setattr(existing, key, value)
+        row = existing
+    else:
+        row = ExtractionResult(job_id=job_id, **data)
+        session.add(row)
     await session.commit()
+    await session.refresh(row)
+    return row
 
 
 async def save_job_result(session: AsyncSession, job_id: uuid.UUID, rules_result: dict, final_payload: dict) -> None:

@@ -139,7 +139,10 @@ class JobCompletionWebhook(BaseModel):
     tenant_id: str
     status: JobStatus
     fraud_result: FraudResult | None = None
+    """Validated JSON used by rules engine (alias: validated_json in DB)."""
     extraction_result: dict[str, Any] | None = None
+    """Raw model output before/alongside validation."""
+    raw_json: dict[str, Any] | None = None
     normalized_gcs_uri: str | None = None
     error: str | None = None
     batch_id: str | None = None

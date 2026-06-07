@@ -240,23 +240,32 @@ class OrchestratorService:
             for item in data.get("results", []):
                 jid = uuid.UUID(item["job_id"])
                 tenant_id = tenant_by_job.get(str(jid), "default")
+                validated = item.get("validated_json")
+                raw = item.get("raw_json")
                 if item.get("error"):
                     await self._complete_job(
                         jid,
                         tenant_id,
                         JobStatus.EXTRACTION_FAILED,
                         error=item["error"],
+                        extraction_result=validated,
+                        raw_json=raw,
                         batch_id=batch_id,
+                        prompt_tokens=item.get("prompt_tokens", 0),
+                        completion_tokens=item.get("completion_tokens", 0),
+                        model_version=request.model,
                     )
                 else:
                     await self._complete_job(
                         jid,
                         tenant_id,
                         JobStatus.EXTRACTED,
-                        extraction_result=item.get("validated_json") or item.get("raw_json"),
+                        extraction_result=validated or raw,
+                        raw_json=raw,
                         batch_id=batch_id,
                         prompt_tokens=item.get("prompt_tokens", 0),
                         completion_tokens=item.get("completion_tokens", 0),
+                        model_version=request.model,
                     )
         except Exception as e:
             self.circuit.record_failure()
@@ -279,6 +288,7 @@ class OrchestratorService:
         status: JobStatus,
         fraud_result=None,
         extraction_result=None,
+        raw_json=None,
         normalized_gcs_uri: str | None = None,
         error: str | None = None,
         batch_id: str | None = None,
@@ -292,6 +302,7 @@ class OrchestratorService:
             status=status,
             fraud_result=fraud_result,
             extraction_result=extraction_result,
+            raw_json=raw_json,
             normalized_gcs_uri=normalized_gcs_uri,
             error=error,
             batch_id=batch_id,

@@ -268,27 +268,47 @@ async def job_complete(webhook: JobCompletionWebhook, db: AsyncSession = Depends
             stage=JobStage.FRAUD.value,
             status=JobStatus.FRAUD_DETECTED,
         )
-    if webhook.extraction_result:
-        await save_extraction(
+    validated_json = webhook.extraction_result
+    raw_json = webhook.raw_json if webhook.raw_json is not None else webhook.extraction_result
+    if validated_json is not None or raw_json is not None:
+        row = await save_extraction(
             db,
             webhook.job_id,
             {
-                "validated_json": webhook.extraction_result,
-                "raw_json": webhook.extraction_result,
+                "validated_json": validated_json,
+                "raw_json": raw_json,
                 "batch_id": webhook.batch_id,
                 "prompt_tokens": webhook.prompt_tokens,
                 "completion_tokens": webhook.completion_tokens,
                 "model_version": webhook.model_version,
             },
         )
+        logger.info(
+            "extraction_result_saved",
+            job_id=str(webhook.job_id),
+            batch_id=webhook.batch_id,
+            has_validated=validated_json is not None,
+            has_raw=raw_json is not None,
+        )
+    elif status in (JobStatus.EXTRACTED, JobStatus.EXTRACTION_FAILED):
+        logger.warning(
+            "extraction_result_missing",
+            job_id=str(webhook.job_id),
+            status=status.value,
+            error=webhook.error,
+        )
 
+    has_extraction = validated_json is not None or raw_json is not None
     await record_job_progress(
         db,
         webhook.job_id,
         end_stage=True,
         stage=JobStage.EXTRACT.value,
-        status=JobStatus.EXTRACTED if webhook.extraction_result else webhook.status,
-        metadata={"batch_id": webhook.batch_id} if webhook.batch_id else {},
+        status=JobStatus.EXTRACTED if has_extraction and not webhook.error else webhook.status,
+        metadata={
+            **({"batch_id": webhook.batch_id} if webhook.batch_id else {}),
+            **({"error": webhook.error} if webhook.error else {}),
+        },
     )
 
     rules_db = await list_rules(db, webhook.tenant_id)
