@@ -4,6 +4,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from idp_contracts.enums import JobStatus
+
 from idp_app.db.models import ExtractionResult, FraudResult, Job, JobResult, PromptProfile, Rule
 
 
@@ -26,7 +28,7 @@ async def create_job(
             return job
     job = Job(
         tenant_id=tenant_id,
-        status="PENDING",
+        status=JobStatus.PENDING,
         image_urls=image_urls,
         invoice_type=invoice_type,
         prompt_profile_id=prompt_profile_id,
@@ -45,10 +47,10 @@ async def get_job(session: AsyncSession, job_id: uuid.UUID) -> Job | None:
     return result.scalar_one_or_none()
 
 
-async def update_job_status(session: AsyncSession, job_id: uuid.UUID, status: str) -> None:
+async def update_job_status(session: AsyncSession, job_id: uuid.UUID, status: JobStatus | str) -> None:
     job = await get_job(session, job_id)
     if job:
-        job.status = status
+        job.status = JobStatus(status) if isinstance(status, str) else status
         job.updated_at = datetime.utcnow()
         await session.commit()
 

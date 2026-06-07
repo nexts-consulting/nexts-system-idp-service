@@ -147,7 +147,7 @@ async def get_job_endpoint(job_id: UUID, db: AsyncSession = Depends(get_db)) -> 
     return JobDetailResponse(
         job_id=job.id,
         tenant_id=job.tenant_id,
-        status=JobStatus(job.status),
+        status=job.status if isinstance(job.status, JobStatus) else JobStatus(job.status),
         image_urls=job.image_urls,
         invoice_type=job.invoice_type,
         prompt_profile_id=job.prompt_profile_id,

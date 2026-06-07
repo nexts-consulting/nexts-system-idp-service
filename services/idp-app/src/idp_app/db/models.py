@@ -1,9 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from idp_contracts.enums import JobStatus
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+# Matches PostgreSQL type job_status from migrations/001_initial_schema.sql
+JobStatusColumn = Enum(JobStatus, name="job_status", create_type=False)
 
 
 class Base(DeclarativeBase):
@@ -29,7 +33,7 @@ class Job(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(128), default="default")
-    status: Mapped[str] = mapped_column(String(32), default="PENDING")
+    status: Mapped[JobStatus] = mapped_column(JobStatusColumn, default=JobStatus.PENDING)
     image_urls: Mapped[list] = mapped_column(JSONB)
     invoice_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     prompt_profile_id: Mapped[uuid.UUID | None] = mapped_column(
