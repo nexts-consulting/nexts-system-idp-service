@@ -2,13 +2,9 @@
 # Cloud SQL proxy + Memorystore Redis + GCS. Extraction on RunPod (no local idp-extraction).
 
 services:
-  cloud-sql-proxy:
+cloud-sql-proxy:
     image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
-    command:
-      - "/cloud-sql-proxy"
-      - "--address=0.0.0.0"
-      - "--port=5432"
-      - "${CLOUD_SQL_CONNECTION}"
+    command: /cloud-sql-proxy --address=0.0.0.0 --port=5432 --instances=${CLOUD_SQL_CONNECTION}
     restart: unless-stopped
 
   idp-app:
