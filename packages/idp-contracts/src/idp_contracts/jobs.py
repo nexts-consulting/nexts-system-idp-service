@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
 
-from idp_contracts.enums import JobStatus
+from idp_contracts.enums import JobStage, JobStatus
 
 
 class CreateJobRequest(BaseModel):
@@ -40,6 +40,20 @@ class FraudResult(BaseModel):
     mask_gcs_uri: str | None = None
 
 
+class JobArtifactRecord(BaseModel):
+    artifact_type: str
+    gcs_uri: str
+    created_at: datetime
+
+
+class JobStageRecord(BaseModel):
+    stage: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    error_code: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class JobDetailResponse(BaseModel):
     job_id: UUID
     tenant_id: str
@@ -52,8 +66,26 @@ class JobDetailResponse(BaseModel):
     fraud_result: FraudResult | None = None
     extraction_result: dict[str, Any] | None = None
     rules_result: dict[str, Any] | None = None
+    stages: list[JobStageRecord] = Field(default_factory=list)
+    artifacts: list[JobArtifactRecord] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+class JobArtifactInput(BaseModel):
+    artifact_type: str
+    gcs_uri: str
+
+
+class JobProgressEvent(BaseModel):
+    job_id: UUID
+    tenant_id: str = "default"
+    status: JobStatus | None = None
+    stage: JobStage | None = None
+    end_stage: bool = False
+    artifacts: list[JobArtifactInput] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
 
 
 class PreprocessTaskMessage(BaseModel):
@@ -110,3 +142,7 @@ class JobCompletionWebhook(BaseModel):
     extraction_result: dict[str, Any] | None = None
     normalized_gcs_uri: str | None = None
     error: str | None = None
+    batch_id: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    model_version: str | None = None

@@ -11,12 +11,15 @@ from idp_common.http_middleware import HttpAccessLogMiddleware
 from idp_common.logging import configure_logging
 from idp_common.metrics import MetricsRegistry
 from idp_common.tracing import setup_tracing
-from idp_contracts.enums import JobStatus
+from idp_contracts.enums import JobStage, JobStatus
 from idp_contracts.jobs import (
     CreateJobRequest,
     CreateJobResponse,
+    JobArtifactRecord,
     JobCompletionWebhook,
     JobDetailResponse,
+    JobProgressEvent,
+    JobStageRecord,
 )
 from idp_contracts.prompts import CreatePromptProfileRequest, PromptProfileResponse
 from idp_contracts.rules import CreateRuleRequest, RuleResponse
@@ -25,13 +28,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp_app.callbacks import deliver_pending, enqueue_callback
 from idp_app.config import Settings
 from idp_app.db.session import get_db
+from idp_app.prompt_resolver import resolve_prompt_from_profile
 from idp_app.repository import (
     create_job,
     create_prompt_profile,
     create_rule,
     get_job,
+    get_job_detail,
     get_prompt_profile,
+    get_prompt_profile_by_name,
     list_rules,
+    record_job_progress,
     save_extraction,
     save_fraud,
     save_job_result,
@@ -90,12 +97,23 @@ async def create_job_endpoint(
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
+    prompt_profile_id = req.prompt_profile_id
+    if not prompt_profile_id and settings.default_prompt_profile_name:
+        default_profile = await get_prompt_profile_by_name(db, settings.default_prompt_profile_name)
+        if default_profile:
+            prompt_profile_id = default_profile.id
+            logger.info(
+                "default_prompt_profile_applied",
+                profile_name=default_profile.name,
+                profile_id=str(default_profile.id),
+            )
+
     job = await create_job(
         db,
         req.tenant_id,
         req.image_urls,
         req.invoice_type,
-        req.prompt_profile_id,
+        prompt_profile_id,
         str(req.callback_url) if req.callback_url else None,
         req.metadata,
         idempotency_key,
@@ -103,13 +121,10 @@ async def create_job_endpoint(
     prompt = None
     prompt_mode = req.prompt_mode
     schema = None
-    if req.prompt_profile_id:
-        profile = await get_prompt_profile(db, req.prompt_profile_id)
+    if prompt_profile_id:
+        profile = await get_prompt_profile(db, prompt_profile_id)
         if profile:
-            prompt = f"{profile.system_prompt}\n\n{profile.user_template}".strip()
-            schema = profile.json_schema if profile.json_schema else None
-            if not prompt_mode and isinstance(profile.json_schema, dict):
-                prompt_mode = profile.json_schema.get("x-prompt-mode")
+            prompt, prompt_mode, schema = resolve_prompt_from_profile(profile, req.prompt_mode)
     async with httpx.AsyncClient(timeout=30.0) as client:
         await client.post(
             f"{settings.orchestrator_url}/internal/v1/jobs/start",
@@ -123,6 +138,13 @@ async def create_job_endpoint(
                 "response_schema": schema,
             },
         )
+    await record_job_progress(
+        db,
+        job.id,
+        status=JobStatus.PENDING,
+        stage=JobStage.PREPROCESS.value,
+        metadata={"event": "enqueued_to_orchestrator"},
+    )
     metrics.jobs_total.labels(
         service=settings.service_name, env=settings.env, status="PENDING", tenant_id=req.tenant_id
     ).inc()
@@ -131,7 +153,7 @@ async def create_job_endpoint(
 
 @app.get("/v1/jobs/{job_id}", response_model=JobDetailResponse)
 async def get_job_endpoint(job_id: UUID, db: AsyncSession = Depends(get_db)) -> JobDetailResponse:
-    job = await get_job(db, job_id)
+    job = await get_job_detail(db, job_id)
     if not job:
         raise HTTPException(404, "Job not found")
     fraud = None
@@ -160,9 +182,52 @@ async def get_job_endpoint(job_id: UUID, db: AsyncSession = Depends(get_db)) -> 
         fraud_result=fraud,
         extraction_result=extraction,
         rules_result=rules,
+        stages=[
+            JobStageRecord(
+                stage=s.stage,
+                started_at=s.started_at,
+                ended_at=s.ended_at,
+                error_code=s.error_code,
+                metadata=s.metadata_,
+            )
+            for s in job.stages
+        ],
+        artifacts=[
+            JobArtifactRecord(
+                artifact_type=a.artifact_type,
+                gcs_uri=a.gcs_uri,
+                created_at=a.created_at,
+            )
+            for a in job.artifacts
+        ],
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
+
+
+@app.post("/internal/v1/jobs/progress")
+async def job_progress(event: JobProgressEvent, db: AsyncSession = Depends(get_db)) -> dict:
+    job = await get_job(db, event.job_id)
+    if not job:
+        logger.warning("job_progress_not_found", job_id=str(event.job_id))
+        raise HTTPException(404, "Job not found")
+    await record_job_progress(
+        db,
+        event.job_id,
+        status=event.status,
+        stage=event.stage.value if event.stage else None,
+        end_stage=event.end_stage,
+        artifacts=[(a.artifact_type, a.gcs_uri) for a in event.artifacts],
+        metadata=event.metadata,
+        error_code=event.error_code,
+    )
+    logger.info(
+        "job_progress_recorded",
+        job_id=str(event.job_id),
+        status=event.status.value if event.status else None,
+        stage=event.stage.value if event.stage else None,
+    )
+    return {"ok": True}
 
 
 @app.post("/internal/v1/jobs/complete")
@@ -190,6 +255,19 @@ async def job_complete(webhook: JobCompletionWebhook, db: AsyncSession = Depends
                 "mask_gcs_uri": webhook.fraud_result.mask_gcs_uri,
             },
         )
+        if webhook.fraud_result.mask_gcs_uri:
+            await record_job_progress(
+                db,
+                webhook.job_id,
+                artifacts=[("fraud_mask", webhook.fraud_result.mask_gcs_uri)],
+            )
+        await record_job_progress(
+            db,
+            webhook.job_id,
+            end_stage=True,
+            stage=JobStage.FRAUD.value,
+            status=JobStatus.FRAUD_DETECTED,
+        )
     if webhook.extraction_result:
         await save_extraction(
             db,
@@ -197,8 +275,21 @@ async def job_complete(webhook: JobCompletionWebhook, db: AsyncSession = Depends
             {
                 "validated_json": webhook.extraction_result,
                 "raw_json": webhook.extraction_result,
+                "batch_id": webhook.batch_id,
+                "prompt_tokens": webhook.prompt_tokens,
+                "completion_tokens": webhook.completion_tokens,
+                "model_version": webhook.model_version,
             },
         )
+
+    await record_job_progress(
+        db,
+        webhook.job_id,
+        end_stage=True,
+        stage=JobStage.EXTRACT.value,
+        status=JobStatus.EXTRACTED if webhook.extraction_result else webhook.status,
+        metadata={"batch_id": webhook.batch_id} if webhook.batch_id else {},
+    )
 
     rules_db = await list_rules(db, webhook.tenant_id)
     context = build_rule_context(
@@ -237,6 +328,14 @@ async def job_complete(webhook: JobCompletionWebhook, db: AsyncSession = Depends
         "rules": rules_result,
     }
     await save_job_result(db, webhook.job_id, rules_result, final_payload)
+    await record_job_progress(
+        db,
+        webhook.job_id,
+        end_stage=True,
+        stage=JobStage.RULES.value,
+        status=JobStatus.RULES_APPLIED,
+        metadata={"rules": rules_result},
+    )
     await update_job_status(db, webhook.job_id, final_status.value)
     metrics.jobs_total.labels(
         service=settings.service_name,
@@ -247,7 +346,18 @@ async def job_complete(webhook: JobCompletionWebhook, db: AsyncSession = Depends
 
     if job.callback_url:
         await enqueue_callback(db, webhook.job_id, job.callback_url, final_payload)
+        await record_job_progress(
+            db,
+            webhook.job_id,
+            stage=JobStage.CALLBACK.value,
+            metadata={"callback_url": job.callback_url},
+        )
 
+    logger.info(
+        "job_completed",
+        job_id=str(webhook.job_id),
+        final_status=final_status.value,
+    )
     return {"status": final_status.value}
 
 

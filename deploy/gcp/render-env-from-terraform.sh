@@ -94,6 +94,8 @@ RUNPOD_API_KEY=
 
 GCS_BUCKET=${ARTIFACTS_BUCKET}
 
+DEFAULT_PROMPT_PROFILE_NAME=vietnamese_invoice_reasoning_vir
+
 FIREBASE_PROJECT_ID=${GCP_PROJECT_ID}
 FIREBASE_ALLOWED_BUCKETS=
 ALLOWED_IMAGE_HOSTS=firebasestorage.googleapis.com,storage.googleapis.com

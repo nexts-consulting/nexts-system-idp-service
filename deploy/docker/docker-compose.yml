@@ -105,6 +105,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://idp:idp@postgres:5432/idp
       REDIS_URL: redis://redis:6379/0
       ORCHESTRATOR_URL: http://idp-orchestrator:8001
+      DEFAULT_PROMPT_PROFILE_NAME: vietnamese_invoice_reasoning_vir
       OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
       ENV: dev
     ports:
@@ -151,6 +152,7 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
       FRAUD_ENABLED: "true"
       DOCTAMPER_CHECKPOINT: /models/mit_unet_doctamper_best.pt
+      APP_INTERNAL_URL: http://idp-app:8000
       OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
       ENV: dev
     ports:

@@ -1,12 +1,22 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from idp_contracts.enums import JobStatus
 
-from idp_app.db.models import ExtractionResult, FraudResult, Job, JobResult, PromptProfile, Rule
+from idp_app.db.models import (
+    ExtractionResult,
+    FraudResult,
+    Job,
+    JobArtifact,
+    JobResult,
+    JobStageRow,
+    PromptProfile,
+    Rule,
+)
 
 
 async def create_job(
@@ -47,12 +57,100 @@ async def get_job(session: AsyncSession, job_id: uuid.UUID) -> Job | None:
     return result.scalar_one_or_none()
 
 
+async def get_job_detail(session: AsyncSession, job_id: uuid.UUID) -> Job | None:
+    result = await session.execute(
+        select(Job)
+        .where(Job.id == job_id)
+        .options(
+            selectinload(Job.fraud_result),
+            selectinload(Job.extraction_result),
+            selectinload(Job.job_result),
+            selectinload(Job.stages),
+            selectinload(Job.artifacts),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_prompt_profile(session: AsyncSession, profile_id: uuid.UUID) -> PromptProfile | None:
+    result = await session.execute(select(PromptProfile).where(PromptProfile.id == profile_id))
+    return result.scalar_one_or_none()
+
+
+async def get_prompt_profile_by_name(
+    session: AsyncSession,
+    name: str,
+    *,
+    enabled_only: bool = True,
+) -> PromptProfile | None:
+    q = select(PromptProfile).where(PromptProfile.name == name)
+    if enabled_only:
+        q = q.where(PromptProfile.enabled.is_(True))
+    q = q.order_by(PromptProfile.version.desc())
+    result = await session.execute(q.limit(1))
+    return result.scalar_one_or_none()
+
+
 async def update_job_status(session: AsyncSession, job_id: uuid.UUID, status: JobStatus | str) -> None:
     job = await get_job(session, job_id)
     if job:
         job.status = JobStatus(status) if isinstance(status, str) else status
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(timezone.utc)
         await session.commit()
+
+
+async def _close_open_stages(session: AsyncSession, job_id: uuid.UUID, error_code: str | None = None) -> None:
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        update(JobStageRow)
+        .where(JobStageRow.job_id == job_id, JobStageRow.ended_at.is_(None))
+        .values(ended_at=now, error_code=error_code)
+    )
+
+
+async def record_job_progress(
+    session: AsyncSession,
+    job_id: uuid.UUID,
+    *,
+    status: JobStatus | str | None = None,
+    stage: str | None = None,
+    end_stage: bool = False,
+    artifacts: list[tuple[str, str]] | None = None,
+    metadata: dict | None = None,
+    error_code: str | None = None,
+) -> None:
+    job = await get_job(session, job_id)
+    if not job:
+        return
+
+    if end_stage:
+        await _close_open_stages(session, job_id, error_code=error_code)
+
+    if status is not None:
+        job.status = JobStatus(status) if isinstance(status, str) else status
+        job.updated_at = datetime.now(timezone.utc)
+
+    if stage:
+        session.add(
+            JobStageRow(
+                job_id=job_id,
+                stage=stage,
+                metadata_=metadata or {},
+                error_code=error_code,
+            )
+        )
+
+    if artifacts:
+        for artifact_type, gcs_uri in artifacts:
+            session.add(
+                JobArtifact(
+                    job_id=job_id,
+                    artifact_type=artifact_type,
+                    gcs_uri=gcs_uri,
+                )
+            )
+
+    await session.commit()
 
 
 async def save_fraud(session: AsyncSession, job_id: uuid.UUID, data: dict) -> None:
@@ -94,8 +192,3 @@ async def create_prompt_profile(session: AsyncSession, data: dict) -> PromptProf
     await session.commit()
     await session.refresh(profile)
     return profile
-
-
-async def get_prompt_profile(session: AsyncSession, profile_id: uuid.UUID) -> PromptProfile | None:
-    result = await session.execute(select(PromptProfile).where(PromptProfile.id == profile_id))
-    return result.scalar_one_or_none()

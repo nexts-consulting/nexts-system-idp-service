@@ -5,10 +5,12 @@ import uuid
 import httpx
 import redis.asyncio as redis
 import structlog
-from idp_contracts.enums import JobStatus
+from idp_common.job_progress import report_job_progress
+from idp_contracts.enums import JobStage, JobStatus
 from idp_contracts.jobs import (
     BatchExtractionRequest,
     JobCompletionWebhook,
+    JobProgressEvent,
     PreprocessResultMessage,
     PreprocessTaskMessage,
 )
@@ -136,6 +138,37 @@ class OrchestratorService:
                 invoice_type=None,
             )
         )
+        await self._report_progress(
+            result.job_id,
+            result.tenant_id,
+            status=JobStatus.BATCHING,
+            stage=JobStage.BATCH_WAIT,
+            end_stage=True,
+        )
+
+    async def _report_progress(
+        self,
+        job_id: uuid.UUID,
+        tenant_id: str,
+        *,
+        status: JobStatus | None = None,
+        stage: JobStage | None = None,
+        end_stage: bool = False,
+        metadata: dict | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        await report_job_progress(
+            self.settings.app_internal_url,
+            JobProgressEvent(
+                job_id=job_id,
+                tenant_id=tenant_id,
+                status=status,
+                stage=stage,
+                end_stage=end_stage,
+                metadata=metadata or {},
+                error_code=error_code,
+            ),
+        )
 
     async def _batch_loop(self) -> None:
         while self._running:
@@ -170,6 +203,15 @@ class OrchestratorService:
     async def _send_batch(self, jobs: list[PendingJob]) -> None:
         batch_id, items = self.accumulator.to_batch_request(jobs)
         request = BatchExtractionRequest(batch_id=batch_id, items=items)
+        for job in jobs:
+            await self._report_progress(
+                uuid.UUID(job.job_id),
+                job.tenant_id,
+                status=JobStatus.EXTRACTING,
+                stage=JobStage.EXTRACT,
+                end_stage=True,
+                metadata={"batch_id": batch_id, "batch_size": len(jobs)},
+            )
         start = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=300.0) as client:
@@ -200,7 +242,11 @@ class OrchestratorService:
                 tenant_id = tenant_by_job.get(str(jid), "default")
                 if item.get("error"):
                     await self._complete_job(
-                        jid, tenant_id, JobStatus.EXTRACTION_FAILED, error=item["error"]
+                        jid,
+                        tenant_id,
+                        JobStatus.EXTRACTION_FAILED,
+                        error=item["error"],
+                        batch_id=batch_id,
                     )
                 else:
                     await self._complete_job(
@@ -208,6 +254,9 @@ class OrchestratorService:
                         tenant_id,
                         JobStatus.EXTRACTED,
                         extraction_result=item.get("validated_json") or item.get("raw_json"),
+                        batch_id=batch_id,
+                        prompt_tokens=item.get("prompt_tokens", 0),
+                        completion_tokens=item.get("completion_tokens", 0),
                     )
         except Exception as e:
             self.circuit.record_failure()
@@ -232,6 +281,10 @@ class OrchestratorService:
         extraction_result=None,
         normalized_gcs_uri: str | None = None,
         error: str | None = None,
+        batch_id: str | None = None,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        model_version: str | None = None,
     ) -> None:
         webhook = JobCompletionWebhook(
             job_id=job_id,
@@ -241,6 +294,10 @@ class OrchestratorService:
             extraction_result=extraction_result,
             normalized_gcs_uri=normalized_gcs_uri,
             error=error,
+            batch_id=batch_id,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            model_version=model_version,
         )
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:

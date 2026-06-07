@@ -13,6 +13,7 @@ class Settings(BaseServiceSettings):
     encoder_name: str = "mit_b2"
     fraud_enabled: bool = True
     consumer_name: str = "preprocess-1"
+    app_internal_url: str = "http://idp-app:8000"
     # Inherit from BaseServiceSettings: firebase_project_id, firebase_allowed_buckets,
     # allowed_image_hosts, gcs_bucket, gcs_emulator_host
 

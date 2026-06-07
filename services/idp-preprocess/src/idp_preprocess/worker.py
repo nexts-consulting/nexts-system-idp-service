@@ -4,8 +4,15 @@ import uuid
 
 import redis.asyncio as redis
 import structlog
-from idp_contracts.enums import JobStatus
-from idp_contracts.jobs import FraudResult, PreprocessResultMessage, PreprocessTaskMessage
+from idp_common.job_progress import report_job_progress
+from idp_contracts.enums import JobStage, JobStatus
+from idp_contracts.jobs import (
+    FraudResult,
+    JobArtifactInput,
+    JobProgressEvent,
+    PreprocessResultMessage,
+    PreprocessTaskMessage,
+)
 
 from idp_preprocess.config import Settings
 from idp_common.image_fetcher import ImageFetcher
@@ -43,6 +50,32 @@ class PreprocessWorker:
             gcs_client=gcs_client,
         )
         self._running = False
+
+    async def _report_progress(
+        self,
+        job_id: uuid.UUID,
+        tenant_id: str,
+        *,
+        status: JobStatus | None = None,
+        stage: JobStage | None = None,
+        end_stage: bool = False,
+        artifacts: list[JobArtifactInput] | None = None,
+        metadata: dict | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        await report_job_progress(
+            self.settings.app_internal_url,
+            JobProgressEvent(
+                job_id=job_id,
+                tenant_id=tenant_id,
+                status=status,
+                stage=stage,
+                end_stage=end_stage,
+                artifacts=artifacts or [],
+                metadata=metadata or {},
+                error_code=error_code,
+            ),
+        )
 
     async def run_forever(self) -> None:
         self._running = True
@@ -142,7 +175,21 @@ class PreprocessWorker:
     async def process_task(self, task: PreprocessTaskMessage) -> PreprocessResultMessage:
         start = time.perf_counter()
         job_id = str(task.job_id)
+        await self._report_progress(
+            task.job_id,
+            task.tenant_id,
+            status=JobStatus.DOWNLOADING,
+            stage=JobStage.DOWNLOAD,
+            end_stage=True,
+        )
         images = await self.image_fetcher.fetch_all(task.image_urls)
+        await self._report_progress(
+            task.job_id,
+            task.tenant_id,
+            status=JobStatus.PREPROCESSING,
+            stage=JobStage.PREPROCESS,
+            end_stage=True,
+        )
         primary = images[0]
         normalized = normalize_image(primary, self.settings.max_image_edge)
         original_uri = self.gcs.upload_bytes(
@@ -157,6 +204,13 @@ class PreprocessWorker:
         status = JobStatus.READY_FOR_EXTRACTION
 
         if self.settings.fraud_enabled and self.doctamper:
+            await self._report_progress(
+                task.job_id,
+                task.tenant_id,
+                status=JobStatus.PREPROCESSING,
+                stage=JobStage.FRAUD,
+                end_stage=True,
+            )
             t0 = time.perf_counter()
             infer = self.doctamper.infer_bytes(normalized)
             self.metrics.observe_stage(self.settings.env, "fraud", time.perf_counter() - t0)
@@ -182,6 +236,24 @@ class PreprocessWorker:
                 predicted_tampered=infer["predicted_tampered"],
                 mask_gcs_uri=mask_uri,
             )
+
+        artifacts = [
+            JobArtifactInput(artifact_type="original", gcs_uri=original_uri),
+            JobArtifactInput(artifact_type="normalized", gcs_uri=normalized_uri),
+        ]
+        if fraud_result and fraud_result.mask_gcs_uri:
+            artifacts.append(
+                JobArtifactInput(artifact_type="fraud_mask", gcs_uri=fraud_result.mask_gcs_uri)
+            )
+        await self._report_progress(
+            task.job_id,
+            task.tenant_id,
+            status=status,
+            stage=JobStage.PREPROCESS,
+            end_stage=True,
+            artifacts=artifacts,
+            metadata={"duration_sec": round(time.perf_counter() - start, 3)},
+        )
 
         return PreprocessResultMessage(
             job_id=task.job_id,

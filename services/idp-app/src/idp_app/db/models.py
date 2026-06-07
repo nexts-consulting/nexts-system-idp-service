@@ -48,6 +48,32 @@ class Job(Base):
     fraud_result: Mapped["FraudResult | None"] = relationship(back_populates="job", uselist=False)
     extraction_result: Mapped["ExtractionResult | None"] = relationship(back_populates="job", uselist=False)
     job_result: Mapped["JobResult | None"] = relationship(back_populates="job", uselist=False)
+    stages: Mapped[list["JobStageRow"]] = relationship(back_populates="job", order_by="JobStageRow.started_at")
+    artifacts: Mapped[list["JobArtifact"]] = relationship(back_populates="job", order_by="JobArtifact.created_at")
+
+
+class JobStageRow(Base):
+    __tablename__ = "job_stages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"))
+    stage: Mapped[str] = mapped_column(String(32))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    job: Mapped[Job] = relationship(back_populates="stages")
+
+
+class JobArtifact(Base):
+    __tablename__ = "job_artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"))
+    artifact_type: Mapped[str] = mapped_column(String(32))
+    gcs_uri: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    job: Mapped[Job] = relationship(back_populates="artifacts")
 
 
 class FraudResult(Base):
