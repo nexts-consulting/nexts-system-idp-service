@@ -6,7 +6,7 @@ VALUES (
     '',
     'Extract this invoice into the exact JSON schema.',
     '{
-        "x-prompt-mode": "reasoning_vir",
+        "x-prompt-mode": "reasoning",
         "type": "object",
         "required": ["store_name", "date", "bill_number", "products", "total_amount"],
         "properties": {

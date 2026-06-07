@@ -48,7 +48,15 @@ class PreprocessWorker:
         self._running = True
         await self.redis.ensure_groups()
         consumer = self.settings.consumer_name
+        reclaimed = await self.redis.reclaim_stale(
+            self.redis.PREPROCESS_TASKS,
+            self.redis.PREPROCESS_GROUP,
+            consumer,
+        )
+        if reclaimed:
+            logger.info("preprocess_reclaimed_stale", count=len(reclaimed))
         logger.info("preprocess_worker_started", consumer=consumer)
+        idle_polls = 0
         while self._running:
             try:
                 messages = await self.redis.read_group(
@@ -58,14 +66,41 @@ class PreprocessWorker:
                     count=5,
                     block_ms=5000,
                 )
-            except (redis.ConnectionError, redis.ResponseError, OSError) as e:
+            except (
+                redis.ConnectionError,
+                redis.TimeoutError,
+                redis.ResponseError,
+                OSError,
+            ) as e:
                 logger.warning("preprocess_redis_error", error=str(e))
                 try:
-                    await self.redis.ensure_groups()
+                    await self.redis.reconnect()
                 except Exception:
                     logger.exception("preprocess_redis_recovery_failed")
                 await asyncio.sleep(1)
                 continue
+            except Exception:
+                logger.exception("preprocess_read_unexpected")
+                await asyncio.sleep(1)
+                continue
+
+            if reclaimed:
+                messages = reclaimed + messages
+                reclaimed = []
+
+            if not messages:
+                idle_polls += 1
+                if idle_polls % 12 == 0:
+                    logger.info(
+                        "preprocess_worker_heartbeat",
+                        queue_len=await self.redis.stream_length(self.redis.PREPROCESS_TASKS),
+                        pending=await self.redis.get_stream_lag(
+                            self.redis.PREPROCESS_TASKS,
+                            self.redis.PREPROCESS_GROUP,
+                        ),
+                    )
+                continue
+            idle_polls = 0
             for msg_id, data in messages:
                 try:
                     task = PreprocessTaskMessage.model_validate(data)

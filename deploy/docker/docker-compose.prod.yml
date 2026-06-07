@@ -88,10 +88,10 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=5)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/ready', timeout=5)",
         ]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 180s
+      start_period: 60s
     restart: unless-stopped

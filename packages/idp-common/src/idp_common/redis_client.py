@@ -11,7 +11,27 @@ class RedisStreams:
     ORCHESTRATOR_GROUP = "orchestrator"
 
     def __init__(self, url: str) -> None:
-        self._client = redis.from_url(url, decode_responses=True)
+        self._url = url
+        self._client = self._new_client()
+
+    def _new_client(self) -> redis.Redis:
+        # socket_timeout must exceed XREADGROUP block_ms to avoid false timeouts.
+        return redis.from_url(
+            self._url,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=30,
+            health_check_interval=30,
+            retry_on_timeout=True,
+        )
+
+    async def reconnect(self) -> None:
+        try:
+            await self._client.aclose()
+        except Exception:
+            pass
+        self._client = self._new_client()
+        await self.ensure_groups()
 
     @property
     def client(self) -> redis.Redis:
@@ -55,6 +75,40 @@ class RedisStreams:
 
     async def ack(self, stream: str, group: str, msg_id: str) -> None:
         await self._client.xack(stream, group, msg_id)
+
+    async def reclaim_stale(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        min_idle_ms: int = 60_000,
+        count: int = 10,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Reclaim pending stream entries left by a dead consumer."""
+        try:
+            _next_id, messages, _deleted = await self._client.xautoclaim(
+                name=stream,
+                groupname=group,
+                consumername=consumer,
+                min_idle_time=min_idle_ms,
+                start_id="0-0",
+                count=count,
+            )
+        except redis.ResponseError:
+            return []
+        results: list[tuple[str, dict[str, Any]]] = []
+        for msg_id, fields in messages:
+            if not fields:
+                continue
+            data = json.loads(fields["data"])
+            results.append((msg_id, data))
+        return results
+
+    async def stream_length(self, stream: str) -> int:
+        try:
+            return int(await self._client.xlen(stream))
+        except Exception:
+            return 0
 
     async def get_stream_lag(self, stream: str, group: str) -> int:
         try:

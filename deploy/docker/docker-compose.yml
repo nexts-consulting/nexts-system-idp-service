@@ -169,7 +169,7 @@ services:
       MOCK_MODE: "true"
       GCS_BUCKET: idp-artifacts-dev
       GCS_EMULATOR_HOST: http://minio:9000
-      DEFAULT_PROMPT_MODE: reasoning_vir
+      DEFAULT_PROMPT_MODE: reasoning
       MAX_NEW_TOKENS: "1024"
       TEMPERATURE: "0.0"
       ENV: dev

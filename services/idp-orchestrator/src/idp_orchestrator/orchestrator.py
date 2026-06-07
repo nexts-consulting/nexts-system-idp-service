@@ -19,7 +19,7 @@ from idp_orchestrator.config import Settings
 
 logger = structlog.get_logger()
 
-DEFAULT_PROMPT_MODE = "reasoning_vir"
+DEFAULT_PROMPT_MODE = "reasoning"
 
 
 class OrchestratorService:
