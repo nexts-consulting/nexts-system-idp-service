@@ -6,6 +6,7 @@ import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
 from idp_common.health import router as health_router
+from idp_common.http_middleware import HttpAccessLogMiddleware
 from idp_common.logging import configure_logging
 from idp_common.metrics import MetricsRegistry
 from idp_common.tracing import setup_tracing
@@ -72,6 +73,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="IDP App", lifespan=lifespan)
+app.add_middleware(HttpAccessLogMiddleware)
 app.include_router(health_router)
 
 

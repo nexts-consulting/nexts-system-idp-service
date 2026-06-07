@@ -6,6 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 from idp_common.gcs import GCSClient
 from idp_common.health import router as health_router
+from idp_common.http_middleware import HttpAccessLogMiddleware
 from idp_common.logging import configure_logging
 from idp_common.metrics import MetricsRegistry
 from idp_common.redis_client import RedisStreams
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="IDP Preprocess", lifespan=lifespan)
+app.add_middleware(HttpAccessLogMiddleware)
 app.include_router(health_router)
 
 

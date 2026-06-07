@@ -202,6 +202,16 @@ curl -X POST "http://127.0.0.1:8001/internal/runpod/warm?warm=true"
 
 Điền `FIREBASE_ALLOWED_BUCKETS` trong `.env.prod` nếu ảnh đầu vào từ Firebase Storage.
 
+**Redis timeout từ app VM:** Memorystore phải dùng `authorized_network = idp-dev-vpc` (đã sửa trong `modules/cache`). Nếu Redis tạo trước đó không gắn VPC, chạy `terraform apply` (có thể **recreate** Redis → IP mới), rồi:
+
+```bash
+bash deploy/gcp/render-env-from-terraform.sh
+# copy .env.prod lên VM, restart compose
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --force-recreate
+```
+
+Kiểm tra từ VM: `python3 -c "import socket; s=socket.socket(); s.settimeout(3); print('OK' if s.connect_ex(('$REDIS_HOST',6379))==0 else 'FAIL')"`
+
 ---
 
 Lưu secrets trong **GCP Secret Manager** (đã tạo shell qua module `secrets`):
