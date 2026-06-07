@@ -143,6 +143,14 @@ terraform output -raw cloud_sql_connection   # sensitive
 - Đổi mật khẩu DB trong Terraform / dùng Secret Manager (placeholder hiện tại: `CHANGE_ME_USE_SECRET_MANAGER`)
 - Hạn chế firewall: chỉ mở port cần thiết; API public nên qua Load Balancer + TLS
 - Cloud SQL: bật private IP + Cloud SQL Auth Proxy thay vì public IP
+- **SSH vào VM:** Terraform mở port `22` chỉ cho IAP (`35.235.240.0/20`), không mở SSH public. Sau `terraform apply`:
+
+```bash
+gcloud compute ssh idp-dev-app-vm --zone=asia-southeast1-a --tunnel-through-iap
+gcloud compute scp deploy/docker/.env.prod idp-dev-app-vm:/tmp/ --zone=asia-southeast1-a --tunnel-through-iap
+```
+
+Cần quyền `roles/iap.tunnelResourceAccessor` trên VM (hoặc `roles/compute.instanceAdmin.v1`).
 
 ---
 
@@ -156,11 +164,13 @@ Repo đã có sẵn file env production lấy từ Terraform output (`env=dev`):
 | ---- | -------- |
 | [deploy/docker/.env.prod](../deploy/docker/.env.prod) | Biến thật cho VM (**không commit**) |
 | [deploy/docker/.env.prod.example](../deploy/docker/.env.prod.example) | Template an toàn để commit |
-| [deploy/docker/docker-compose.prod.yml](../deploy/docker/docker-compose.prod.yml) | Compose GCP: Cloud SQL proxy + 3 service + mock extraction |
+| [deploy/docker/docker-compose.prod.yml](../deploy/docker/docker-compose.prod.yml) | Compose GCP: Cloud SQL proxy + app / orchestrator / preprocess |
 | [deploy/gcp/setup-vm-secrets.sh](../deploy/gcp/setup-vm-secrets.sh) | Tạo SA key, IAM Cloud SQL, sync Secret Manager |
 | [deploy/gcp/render-env-from-terraform.sh](../deploy/gcp/render-env-from-terraform.sh) | Tái tạo `.env.prod` sau khi `terraform apply` |
+| [deploy/gcp/deploy-on-app-vm.sh](../deploy/gcp/deploy-on-app-vm.sh) | Script deploy trên app VM |
+| [deploy/runpod/runpod.env.example](../deploy/runpod/runpod.env.example) | Tham chiếu RunPod pod ID / URL |
 
-**Giá trị hiện tại (Terraform `dev`):**
+**Giá trị hiện tại (Terraform `dev` + RunPod):**
 
 | Biến | Giá trị |
 | ---- | ------- |
@@ -168,27 +178,29 @@ Repo đã có sẵn file env production lấy từ Terraform output (`env=dev`):
 | `REDIS_URL` | `redis://10.137.178.83:6379/0` |
 | `CLOUD_SQL_CONNECTION` | `nexts-system-idp-service:asia-southeast1:idp-dev-pg` |
 | `DATABASE_URL` | qua sidecar `cloud-sql-proxy:5432` |
-| `EXTRACTION_URL` | `http://idp-extraction:8003` (**MOCK** — RunPod chưa có) |
+| `RUNPOD_POD_ID` | `xc1fco8h90o2wx` |
+| `EXTRACTION_URL` | `https://xc1fco8h90o2wx-8003.proxy.runpod.net` |
+| `MOCK_EXTRACTION` | `false` |
 | `APP_VM_IP` | `34.21.226.104` |
 
-Trên **app VM**, trước khi `docker compose up`:
+Trên **app VM**, deploy:
 
 ```bash
-sudo mkdir -p /opt/idp/secrets /opt/idp/models
-# Từ laptop (sau gcloud auth login):
+# Laptop: secrets + copy .env.prod (SSH qua IAP — không dùng user@IP trực tiếp)
 bash deploy/gcp/setup-vm-secrets.sh
-scp deploy/gcp/keys/preprocess-sa.json user@34.21.226.104:/opt/idp/secrets/
+gcloud compute scp deploy/gcp/keys/preprocess-sa.json deploy/docker/.env.prod \
+  idp-dev-app-vm:/tmp/ --zone=asia-southeast1-a --tunnel-through-iap
+gcloud compute ssh idp-dev-app-vm --zone=asia-southeast1-a --tunnel-through-iap \
+  --command='sudo mkdir -p /opt/idp/secrets && sudo mv /tmp/preprocess-sa.json /opt/idp/secrets/'
 
-# Trên VM: tải DocTamper
-gsutil cp gs://idp-dev-artifacts/models/mit_unet_doctamper_best.pt /opt/idp/models/
+# VM: clone repo, copy .env.prod vào deploy/docker/, rồi:
+bash deploy/gcp/deploy-on-app-vm.sh
 
-cd deploy/docker
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# Warm RunPod sau deploy
+curl -X POST "http://127.0.0.1:8001/internal/runpod/warm?warm=true"
 ```
 
 Điền `FIREBASE_ALLOWED_BUCKETS` trong `.env.prod` nếu ảnh đầu vào từ Firebase Storage.
-
-**RunPod:** Khi pod sẵn sàng, sửa `.env.prod`: `EXTRACTION_URL=https://<runpod>-8003.proxy.runpod.net`, `MOCK_EXTRACTION=false`, và xóa service `idp-extraction` khỏi compose (hoặc không start nó).
 
 ---
 

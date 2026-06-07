@@ -1,6 +1,5 @@
 # Production compose for GCP app VM.
-# Uses managed Cloud SQL (proxy), Memorystore Redis, GCS — no local postgres/redis/minio.
-# RunPod not ready: idp-extraction runs with MOCK_MODE=true until EXTRACTION_URL points to RunPod.
+# Cloud SQL proxy + Memorystore Redis + GCS. Extraction on RunPod (no local idp-extraction).
 
 services:
   cloud-sql-proxy:
@@ -52,9 +51,6 @@ services:
       OTEL_EXPORTER_ENDPOINT: ${OTEL_EXPORTER_ENDPOINT:-}
     ports:
       - "8001:8001"
-    depends_on:
-      idp-extraction:
-        condition: service_started
     restart: unless-stopped
 
   idp-preprocess:
@@ -81,21 +77,4 @@ services:
     volumes:
       - ${MODELS_DIR}:/models:ro
       - ${SECRETS_DIR}:/secrets:ro
-    restart: unless-stopped
-
-  # Temporary until RunPod is live. Remove when EXTRACTION_URL points to RunPod.
-  idp-extraction:
-    build:
-      context: ../..
-      dockerfile: services/idp-extraction/Dockerfile
-    image: ${IMAGE_REGISTRY}idp-extraction:${IMAGE_TAG}
-    environment:
-      MOCK_MODE: "true"
-      GCS_BUCKET: ${GCS_BUCKET}
-      DEFAULT_PROMPT_MODE: reasoning_vir
-      MAX_NEW_TOKENS: "1024"
-      TEMPERATURE: "0.0"
-      ENV: ${IDP_ENV}
-    ports:
-      - "8003:8003"
     restart: unless-stopped

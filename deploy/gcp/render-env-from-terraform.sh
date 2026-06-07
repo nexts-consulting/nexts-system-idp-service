@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate deploy/docker/.env.prod from Terraform outputs + local secrets.
+# Regenerate deploy/docker/.env.prod from Terraform outputs + preserved secrets/RunPod.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -29,16 +29,34 @@ ORCH_SA="${NAME_PREFIX}-orch@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
 
 CALLBACK_SECRET=""
 DB_PASSWORD=""
+RUNPOD_POD_ID="${RUNPOD_POD_ID:-}"
+EXTRACTION_URL="${EXTRACTION_URL:-}"
+MOCK_EXTRACTION="${MOCK_EXTRACTION:-false}"
+
 if [[ -f "$OUT" ]]; then
   CALLBACK_SECRET="$(grep '^CALLBACK_HMAC_SECRET=' "$OUT" | cut -d= -f2- || true)"
   DB_PASSWORD="$(grep '^DB_PASSWORD=' "$OUT" | cut -d= -f2- || true)"
+  RUNPOD_POD_ID="${RUNPOD_POD_ID:-$(grep '^RUNPOD_POD_ID=' "$OUT" | cut -d= -f2- || true)}"
+  EXTRACTION_URL="${EXTRACTION_URL:-$(grep '^EXTRACTION_URL=' "$OUT" | cut -d= -f2- || true)}"
+  MOCK_EXTRACTION="$(grep '^MOCK_EXTRACTION=' "$OUT" | cut -d= -f2- || echo "$MOCK_EXTRACTION")"
 fi
+
 if [[ -z "$CALLBACK_SECRET" ]]; then
   CALLBACK_SECRET="$(openssl rand -hex 32)"
 fi
 if [[ -z "$DB_PASSWORD" ]]; then
   echo "Set DB_PASSWORD in $OUT after first run (Terraform module database password)." >&2
   DB_PASSWORD="CHANGE_ME"
+fi
+
+if [[ -n "$RUNPOD_POD_ID" && -z "$EXTRACTION_URL" ]]; then
+  EXTRACTION_URL="https://${RUNPOD_POD_ID}-8003.proxy.runpod.net"
+  MOCK_EXTRACTION="false"
+fi
+
+if [[ -z "$EXTRACTION_URL" ]]; then
+  EXTRACTION_URL="http://idp-extraction:8003"
+  MOCK_EXTRACTION="true"
 fi
 
 DB_PASSWORD_ENC="$(python3 -c "import urllib.parse; print(urllib.parse.quote('''${DB_PASSWORD}''', safe=''))")"
@@ -69,8 +87,9 @@ REDIS_URL=redis://${REDIS_HOST}:6379/0
 
 CALLBACK_HMAC_SECRET=${CALLBACK_SECRET}
 
-EXTRACTION_URL=http://idp-extraction:8003
-MOCK_EXTRACTION=true
+RUNPOD_POD_ID=${RUNPOD_POD_ID}
+EXTRACTION_URL=${EXTRACTION_URL}
+MOCK_EXTRACTION=${MOCK_EXTRACTION}
 RUNPOD_API_KEY=
 
 GCS_BUCKET=${ARTIFACTS_BUCKET}
@@ -100,3 +119,4 @@ OTEL_EXPORTER_ENDPOINT=
 EOF
 
 echo "Wrote $OUT"
+echo "EXTRACTION_URL=${EXTRACTION_URL} MOCK_EXTRACTION=${MOCK_EXTRACTION}"

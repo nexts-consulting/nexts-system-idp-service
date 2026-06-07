@@ -52,6 +52,21 @@ resource "google_compute_firewall" "allow_http" {
   target_tags   = ["idp-app"]
 }
 
+# SSH via Identity-Aware Proxy (no public 0.0.0.0/0:22).
+# Connect: gcloud compute ssh <vm> --zone=... --tunnel-through-iap
+resource "google_compute_firewall" "allow_iap_ssh" {
+  name    = "${var.name_prefix}-allow-iap-ssh"
+  network = var.network_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["idp-app"]
+}
+
 output "app_vm_ip" {
   value = google_compute_instance.app_vm.network_interface[0].access_config[0].nat_ip
 }

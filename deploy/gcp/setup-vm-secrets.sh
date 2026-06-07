@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run on laptop (with gcloud auth) before SSH to app VM.
+# Run on local machine (with gcloud auth) before SSH to app VM.
 # Creates preprocess SA key, grants Cloud SQL client to app SA, optional Secret Manager sync.
 set -euo pipefail
 

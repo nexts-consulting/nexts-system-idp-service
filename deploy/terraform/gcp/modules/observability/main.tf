@@ -31,6 +31,19 @@ resource "google_compute_instance" "monitoring" {
   tags = ["idp-monitoring"]
 }
 
+resource "google_compute_firewall" "allow_iap_ssh" {
+  name    = "${var.name_prefix}-allow-iap-ssh-monitoring"
+  network = var.network_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["idp-monitoring"]
+}
+
 resource "google_monitoring_uptime_check_config" "app_health" {
   display_name = "${var.name_prefix}-app-health"
   timeout      = "10s"
