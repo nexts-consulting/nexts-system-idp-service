@@ -29,19 +29,38 @@ worker_task: asyncio.Task | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global worker, worker_task
+    logger.info(
+        "preprocess_starting",
+        fraud_enabled=settings.fraud_enabled,
+        gcs_bucket=settings.gcs_bucket,
+        redis_host=settings.redis_url.rsplit("@", 1)[-1],
+    )
     redis = RedisStreams(settings.redis_url)
     gcs = GCSClient(settings.gcs_bucket, settings.gcs_emulator_host)
     doctamper = None
-    try:
-        doctamper = DocTamperModel(
-            settings.doctamper_checkpoint,
-            settings.encoder_name,
-            settings.tamper_pixel_threshold,
-        )
-    except Exception as e:
-        logger.warning("doctamper_not_loaded", error=str(e))
+    if settings.fraud_enabled:
+        try:
+            doctamper = DocTamperModel(
+                settings.doctamper_checkpoint,
+                settings.encoder_name,
+                settings.tamper_pixel_threshold,
+            )
+            logger.info("doctamper_loaded", checkpoint=settings.doctamper_checkpoint)
+        except Exception as e:
+            logger.warning("doctamper_not_loaded", error=str(e))
+    else:
+        logger.info("fraud_disabled", skip_doctamper_load=True)
     worker = PreprocessWorker(settings, redis, gcs, metrics, doctamper)
     worker_task = asyncio.create_task(worker.run_forever())
+
+    def _on_worker_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("preprocess_worker_stopped", error=str(exc))
+
+    worker_task.add_done_callback(_on_worker_done)
     yield
     if worker:
         worker.stop()

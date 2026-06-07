@@ -2,6 +2,7 @@ import asyncio
 import time
 import uuid
 
+import redis.asyncio as redis
 import structlog
 from idp_contracts.enums import JobStatus
 from idp_contracts.jobs import FraudResult, PreprocessResultMessage, PreprocessTaskMessage
@@ -47,18 +48,34 @@ class PreprocessWorker:
         self._running = True
         await self.redis.ensure_groups()
         consumer = self.settings.consumer_name
+        logger.info("preprocess_worker_started", consumer=consumer)
         while self._running:
-            messages = await self.redis.read_group(
-                self.redis.PREPROCESS_TASKS,
-                self.redis.PREPROCESS_GROUP,
-                consumer,
-                count=5,
-                block_ms=5000,
-            )
+            try:
+                messages = await self.redis.read_group(
+                    self.redis.PREPROCESS_TASKS,
+                    self.redis.PREPROCESS_GROUP,
+                    consumer,
+                    count=5,
+                    block_ms=5000,
+                )
+            except (redis.ConnectionError, redis.ResponseError, OSError) as e:
+                logger.warning("preprocess_redis_error", error=str(e))
+                try:
+                    await self.redis.ensure_groups()
+                except Exception:
+                    logger.exception("preprocess_redis_recovery_failed")
+                await asyncio.sleep(1)
+                continue
             for msg_id, data in messages:
                 try:
                     task = PreprocessTaskMessage.model_validate(data)
+                    logger.info("preprocess_task_started", job_id=str(task.job_id))
                     result = await self.process_task(task)
+                    logger.info(
+                        "preprocess_task_done",
+                        job_id=str(task.job_id),
+                        status=result.status.value,
+                    )
                     await self.redis.publish(
                         self.redis.PREPROCESS_RESULTS,
                         result.model_dump(mode="json"),

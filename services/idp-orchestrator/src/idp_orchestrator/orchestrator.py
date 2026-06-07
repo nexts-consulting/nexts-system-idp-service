@@ -3,6 +3,7 @@ import time
 import uuid
 
 import httpx
+import redis.asyncio as redis
 import structlog
 from idp_contracts.enums import JobStatus
 from idp_contracts.jobs import (
@@ -43,7 +44,7 @@ class OrchestratorService:
         prompt_mode: str | None = None,
         response_schema: dict | None = None,
     ) -> None:
-        await self.redis.publish(
+        msg_id = await self.redis.publish(
             self.redis.PREPROCESS_TASKS,
             PreprocessTaskMessage(
                 job_id=job_id,
@@ -52,6 +53,7 @@ class OrchestratorService:
                 invoice_type=invoice_type,
             ).model_dump(mode="json"),
         )
+        logger.info("job_enqueued", job_id=str(job_id), stream_msg_id=msg_id)
         await self.redis.set_key(f"job:{job_id}:prompt", prompt or "")
         await self.redis.set_key(
             f"job:{job_id}:prompt_mode", prompt_mode or DEFAULT_PROMPT_MODE
@@ -66,14 +68,24 @@ class OrchestratorService:
         await self.redis.ensure_groups()
         asyncio.create_task(self._batch_loop())
         consumer = self.settings.consumer_name
+        logger.info("orchestrator_worker_started", consumer=consumer)
         while self._running:
-            messages = await self.redis.read_group(
-                self.redis.PREPROCESS_RESULTS,
-                self.redis.ORCHESTRATOR_GROUP,
-                consumer,
-                count=10,
-                block_ms=3000,
-            )
+            try:
+                messages = await self.redis.read_group(
+                    self.redis.PREPROCESS_RESULTS,
+                    self.redis.ORCHESTRATOR_GROUP,
+                    consumer,
+                    count=10,
+                    block_ms=3000,
+                )
+            except (redis.ConnectionError, redis.ResponseError, OSError) as e:
+                logger.warning("orchestrator_redis_error", error=str(e))
+                try:
+                    await self.redis.ensure_groups()
+                except Exception:
+                    logger.exception("orchestrator_redis_recovery_failed")
+                await asyncio.sleep(1)
+                continue
             for msg_id, data in messages:
                 try:
                     result = PreprocessResultMessage.model_validate(data)

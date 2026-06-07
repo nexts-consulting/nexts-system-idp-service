@@ -29,6 +29,8 @@ services:
     depends_on:
       cloud-sql-proxy:
         condition: service_started
+      idp-preprocess:
+        condition: service_healthy
       idp-orchestrator:
         condition: service_started
     restart: unless-stopped
@@ -51,6 +53,9 @@ services:
       OTEL_EXPORTER_ENDPOINT: ${OTEL_EXPORTER_ENDPOINT:-}
     ports:
       - "8001:8001"
+    depends_on:
+      idp-preprocess:
+        condition: service_healthy
     restart: unless-stopped
 
   idp-preprocess:
@@ -77,4 +82,16 @@ services:
     volumes:
       - ${MODELS_DIR}:/models:ro
       - ${SECRETS_DIR}:/secrets:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
     restart: unless-stopped

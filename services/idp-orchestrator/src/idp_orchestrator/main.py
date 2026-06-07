@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from uuid import UUID
 
+import structlog
 import uvicorn
 from fastapi import FastAPI
 from idp_common.health import router as health_router
@@ -19,6 +20,7 @@ settings = Settings()
 configure_logging(settings.log_level, settings.service_name)
 setup_tracing(settings.service_name, settings.otel_exporter_endpoint)
 metrics = MetricsRegistry(settings.service_name)
+logger = structlog.get_logger()
 
 orchestrator: OrchestratorService | None = None
 orch_task: asyncio.Task | None = None
@@ -40,6 +42,15 @@ async def lifespan(app: FastAPI):
     redis = RedisStreams(settings.redis_url)
     orchestrator = OrchestratorService(settings, redis, metrics)
     orch_task = asyncio.create_task(orchestrator.run_forever())
+
+    def _on_worker_done(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("orchestrator_worker_stopped", error=str(exc))
+
+    orch_task.add_done_callback(_on_worker_done)
     app.state.redis = redis
     yield
     if orchestrator:
