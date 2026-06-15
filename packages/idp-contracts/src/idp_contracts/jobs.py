@@ -32,6 +32,20 @@ class CreateJobResponse(BaseModel):
     status: JobStatus
 
 
+class JobListItem(BaseModel):
+    job_id: UUID
+    tenant_id: str
+    status: JobStatus
+    created_at: datetime
+    updated_at: datetime
+    invoice_type: str | None = None
+
+
+class JobListResponse(BaseModel):
+    jobs: list[JobListItem] = Field(default_factory=list)
+    total: int = 0
+
+
 class FraudResult(BaseModel):
     tamper_ratio: float
     tamper_pixels: int

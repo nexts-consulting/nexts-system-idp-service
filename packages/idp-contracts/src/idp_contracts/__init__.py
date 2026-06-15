@@ -9,6 +9,8 @@ from idp_contracts.jobs import (
     FraudResult,
     JobCompletionWebhook,
     JobDetailResponse,
+    JobListItem,
+    JobListResponse,
     PreprocessResultMessage,
     PreprocessTaskMessage,
 )
@@ -30,6 +32,8 @@ __all__ = [
     "FraudResult",
     "JobCompletionWebhook",
     "JobDetailResponse",
+    "JobListItem",
+    "JobListResponse",
     "JobStage",
     "JobStatus",
     "PreprocessResultMessage",

@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from idp_contracts.debug import DebugRequestEvent, DebugTimelineEvent
 from idp_contracts.enums import JobStatus
+from idp_contracts.jobs import JobListItem
 
 from idp_app.db.models import (
     DebugRequestEventRow,
@@ -57,6 +58,31 @@ async def create_job(
 async def get_job(session: AsyncSession, job_id: uuid.UUID) -> Job | None:
     result = await session.execute(select(Job).where(Job.id == job_id))
     return result.scalar_one_or_none()
+
+
+async def list_jobs_recent(
+    session: AsyncSession,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[JobListItem], int]:
+    total_result = await session.execute(select(func.count()).select_from(Job))
+    total = int(total_result.scalar_one())
+    result = await session.execute(
+        select(Job).order_by(Job.created_at.desc()).offset(offset).limit(limit)
+    )
+    jobs = [
+        JobListItem(
+            job_id=row.id,
+            tenant_id=row.tenant_id,
+            status=row.status if isinstance(row.status, JobStatus) else JobStatus(row.status),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            invoice_type=row.invoice_type,
+        )
+        for row in result.scalars().all()
+    ]
+    return jobs, total
 
 
 async def get_job_detail(session: AsyncSession, job_id: uuid.UUID) -> Job | None:

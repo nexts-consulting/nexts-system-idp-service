@@ -28,6 +28,7 @@ from idp_contracts.jobs import (
     JobArtifactRecord,
     JobCompletionWebhook,
     JobDetailResponse,
+    JobListResponse,
     JobProgressEvent,
     JobStageRecord,
 )
@@ -48,6 +49,7 @@ from idp_app.repository import (
     get_prompt_profile,
     get_prompt_profile_by_name,
     list_debug_events,
+    list_jobs_recent,
     list_rules,
     record_job_progress,
     save_debug_event,
@@ -234,6 +236,16 @@ async def create_job_endpoint(
     return CreateJobResponse(job_id=job.id, status=JobStatus.PENDING)
 
 
+@app.get("/v1/jobs", response_model=JobListResponse)
+async def list_jobs_endpoint(
+    db: AsyncSession = Depends(get_db),
+    limit: int = 50,
+    offset: int = 0,
+) -> JobListResponse:
+    jobs, total = await list_jobs_recent(db, limit=min(limit, 100), offset=max(offset, 0))
+    return JobListResponse(jobs=jobs, total=total)
+
+
 @app.get("/v1/jobs/{job_id}/debug-timeline", response_model=DebugTimelineResponse)
 async def get_debug_timeline(job_id: UUID, db: AsyncSession = Depends(get_db)) -> DebugTimelineResponse:
     job = await get_job(db, job_id)
@@ -245,8 +257,17 @@ async def get_debug_timeline(job_id: UUID, db: AsyncSession = Depends(get_db)) -
     return DebugTimelineResponse(job_id=job_id, trace_id=trace_id, events=events)
 
 
+@app.get("/debug")
+async def debug_index_page() -> FileResponse:
+    return await _debug_page()
+
+
 @app.get("/debug/jobs/{job_id}")
 async def debug_job_page(job_id: UUID) -> FileResponse:
+    return await _debug_page()
+
+
+async def _debug_page() -> FileResponse:
     html_path = _STATIC_DIR / "debug_job.html"
     if not html_path.is_file():
         raise HTTPException(404, "Debug page not found")
