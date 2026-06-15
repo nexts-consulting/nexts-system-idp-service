@@ -541,10 +541,15 @@ class InternLMExtractor:
         if mode == "reasoning_vir":
           return (
               base +
-              "\nApply visual-invariant reasoning (ViR):\n"
-              "- Detect table structure (columns: item | unit price | quantity | amount)\n"
-              "- Separate table region vs summary region\n"
-              "- Cross-check totals and fix misclassified rows\n"
+                "\nApply visual-invariant reasoning (ViR) and strict extraction rules:\n"
+                "- **Strict OCR Integrity**: Extract values EXACTLY as written on the receipt. DO NOT perform any mathematical calculations (e.g., do not multiply quantity by price to invent line_amount, do not sum up to invent total_amount). If a value is missing or unreadable, follow the schema rules.\n"
+                "- **Table Structure Detection**: Identify rows clearly. Be careful with columns containing 'SL' (Quantity), 'VAT', and 'T.tiền' (Line Amount). Do not confuse the VAT percentage (e.g., '8%') with quantity or unit.\n"
+                "- **Summary Fields Mapping**:\n"
+                "  * 'total_amount': Must map to the FINAL actual payment amount that the customer has to pay (often labeled as 'Thanh toán', 'Tổng cộng thanh toán', or the final circled/highlighted total value). Do not mistake it for the subtotal before discount ('Tổng tiền').\n"
+                "  * 'discount': Map to 'Chiết khấu' or 'Giảm giá' if present.\n"
+                "  * 'customer_payment' & 'cash': Map to 'Tiền mặt' or 'Khách đưa'.\n"
+                "  * 'change': Map to 'Tiền trả lại' or 'Tiền thừa'.\n"
+                "- **Noise Filtering**: Ignore currency symbols like 'đ' or 'd' when parsing numbers. Do not let text formatting artifacts corrupt the numeric extraction (e.g., '8%' VAT should not become quantity 8)."
         )
         raise ValueError(f"Unsupported mode: {mode}")
 
