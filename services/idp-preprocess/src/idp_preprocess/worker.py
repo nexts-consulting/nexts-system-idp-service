@@ -4,6 +4,7 @@ import uuid
 
 import redis.asyncio as redis
 import structlog
+from idp_common.debug_audit import DebugAuditClient, redact_url
 from idp_common.job_progress import report_job_progress
 from idp_contracts.enums import JobStage, JobStatus
 from idp_contracts.jobs import (
@@ -48,6 +49,11 @@ class PreprocessWorker:
             allowed_buckets=settings.parsed_allowed_buckets(),
             allowed_http_hosts=settings.parsed_allowed_hosts(),
             gcs_client=gcs_client,
+        )
+        self.audit = DebugAuditClient(
+            settings.app_internal_url,
+            settings.service_name,
+            enabled=settings.debug_audit_enabled,
         )
         self._running = False
 
@@ -138,6 +144,15 @@ class PreprocessWorker:
                 try:
                     task = PreprocessTaskMessage.model_validate(data)
                     logger.info("preprocess_task_started", job_id=str(task.job_id))
+                    trace_id = task.trace_id or task.job_id
+                    await self.audit.log(
+                        trace_id=trace_id,
+                        job_id=task.job_id,
+                        step="redis.consume preprocess_tasks",
+                        direction="internal",
+                        status="success",
+                        request={"stream": self.redis.PREPROCESS_TASKS, "msg_id": msg_id},
+                    )
                     result = await self.process_task(task)
                     logger.info(
                         "preprocess_task_done",
@@ -147,6 +162,15 @@ class PreprocessWorker:
                     await self.redis.publish(
                         self.redis.PREPROCESS_RESULTS,
                         result.model_dump(mode="json"),
+                    )
+                    await self.audit.log(
+                        trace_id=trace_id,
+                        job_id=task.job_id,
+                        step="redis.publish preprocess_results",
+                        direction="internal",
+                        status="success",
+                        request={"stream": self.redis.PREPROCESS_RESULTS},
+                        response={"status": result.status.value},
                     )
                     await self.redis.ack(
                         self.redis.PREPROCESS_TASKS,
@@ -175,6 +199,7 @@ class PreprocessWorker:
     async def process_task(self, task: PreprocessTaskMessage) -> PreprocessResultMessage:
         start = time.perf_counter()
         job_id = str(task.job_id)
+        trace_id = task.trace_id or task.job_id
         await self._report_progress(
             task.job_id,
             task.tenant_id,
@@ -182,7 +207,18 @@ class PreprocessWorker:
             stage=JobStage.DOWNLOAD,
             end_stage=True,
         )
+        dl_start = time.perf_counter()
         images = await self.image_fetcher.fetch_all(task.image_urls)
+        await self.audit.log(
+            trace_id=trace_id,
+            job_id=task.job_id,
+            step="download images",
+            direction="outbound",
+            duration_ms=int((time.perf_counter() - dl_start) * 1000),
+            status="success",
+            request={"urls": [redact_url(u) for u in task.image_urls], "count": len(task.image_urls)},
+            response={"image_count": len(images), "bytes": sum(len(i) for i in images)},
+        )
         await self._report_progress(
             task.job_id,
             task.tenant_id,
@@ -192,11 +228,22 @@ class PreprocessWorker:
         )
         primary = images[0]
         normalized = normalize_image(primary, self.settings.max_image_edge)
+        gcs_start = time.perf_counter()
         original_uri = self.gcs.upload_bytes(
             f"jobs/{job_id}/original.jpg", primary, "image/jpeg"
         )
         normalized_uri = self.gcs.upload_bytes(
             f"jobs/{job_id}/normalized.jpg", normalized, "image/jpeg"
+        )
+        await self.audit.log(
+            trace_id=trace_id,
+            job_id=task.job_id,
+            step="gcs.upload artifacts",
+            direction="outbound",
+            duration_ms=int((time.perf_counter() - gcs_start) * 1000),
+            status="success",
+            request={"original_bytes": len(primary), "normalized_bytes": len(normalized)},
+            response={"original_uri": original_uri, "normalized_uri": normalized_uri},
         )
         self.metrics.observe_stage(self.settings.env, "download", time.perf_counter() - start)
 
@@ -213,6 +260,20 @@ class PreprocessWorker:
             )
             t0 = time.perf_counter()
             infer = self.doctamper.infer_bytes(normalized)
+            fraud_ms = int((time.perf_counter() - t0) * 1000)
+            await self.audit.log(
+                trace_id=trace_id,
+                job_id=task.job_id,
+                step="doctamper.infer",
+                direction="internal",
+                duration_ms=fraud_ms,
+                status="success",
+                request={"image_bytes": len(normalized)},
+                response={
+                    "tamper_ratio": infer["tamper_ratio"],
+                    "predicted_tampered": infer["predicted_tampered"],
+                },
+            )
             self.metrics.observe_stage(self.settings.env, "fraud", time.perf_counter() - t0)
             self.metrics.tamper_ratio.labels(
                 service=self.settings.service_name, env=self.settings.env

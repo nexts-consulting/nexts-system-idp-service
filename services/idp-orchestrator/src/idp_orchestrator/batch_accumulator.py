@@ -16,6 +16,7 @@ class PendingJob:
     prompt_mode: str | None = None
     response_schema: dict | None = None
     invoice_type: str | None = None
+    trace_id: str | None = None
     added_at: float = field(default_factory=time.time)
 
 
@@ -62,6 +63,7 @@ class BatchAccumulator:
                 prompt=job.prompt,
                 prompt_mode=job.prompt_mode,
                 response_schema=job.response_schema,
+                trace_id=UUID(job.trace_id) if job.trace_id else None,
             )
             for job in jobs
         ]

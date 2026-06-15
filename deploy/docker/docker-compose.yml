@@ -10,6 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ../../migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+      - ../../migrations/002_debug_request_events.sql:/docker-entrypoint-initdb.d/002_debug_events.sql
       - ../../scripts/seed_prompts.sql:/docker-entrypoint-initdb.d/002_seed.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U idp"]
@@ -107,6 +108,7 @@ services:
       ORCHESTRATOR_URL: http://idp-orchestrator:8001
       DEFAULT_PROMPT_PROFILE_NAME: vietnamese_invoice_reasoning_vir
       OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+      DEBUG_AUDIT_ENABLED: "true"
       ENV: dev
     ports:
       - "8000:8000"
@@ -129,6 +131,7 @@ services:
       BATCH_MAX_SIZE: "48"
       BATCH_MAX_WAIT_MS: "500"
       OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+      DEBUG_AUDIT_ENABLED: "true"
       ENV: dev
     ports:
       - "8001:8001"
@@ -154,6 +157,7 @@ services:
       DOCTAMPER_CHECKPOINT: /models/mit_unet_doctamper_best.pt
       APP_INTERNAL_URL: http://idp-app:8000
       OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+      DEBUG_AUDIT_ENABLED: "true"
       ENV: dev
     ports:
       - "8002:8002"
@@ -174,6 +178,9 @@ services:
       DEFAULT_PROMPT_MODE: reasoning
       MAX_NEW_TOKENS: "1024"
       TEMPERATURE: "0.0"
+      OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+      APP_INTERNAL_URL: http://idp-app:8000
+      DEBUG_AUDIT_ENABLED: "true"
       ENV: dev
     ports:
       - "8003:8003"

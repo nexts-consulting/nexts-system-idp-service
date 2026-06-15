@@ -1,8 +1,10 @@
 import time
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from idp_common.debug_audit import DebugAuditClient, DebugInboundMiddleware, parse_job_id, parse_trace_id
 from idp_common.gcs import GCSClient
 from idp_common.health import router as health_router
 from idp_common.logging import configure_logging
@@ -24,6 +26,11 @@ settings = Settings()
 configure_logging(settings.log_level, settings.service_name)
 setup_tracing(settings.service_name, settings.otel_exporter_endpoint)
 metrics = MetricsRegistry(settings.service_name)
+debug_audit = DebugAuditClient(
+    settings.app_internal_url,
+    settings.service_name,
+    enabled=settings.debug_audit_enabled,
+)
 
 lmdeploy: LmdeployClient | None = None
 gcs: GCSClient | None = None
@@ -45,7 +52,17 @@ async def lifespan(app: FastAPI):
     yield
 
 
+async def _forward_debug_event(event) -> None:
+    await debug_audit.emit(event)
+
+
 app = FastAPI(title="IDP Extraction", lifespan=lifespan)
+app.add_middleware(
+    DebugInboundMiddleware,
+    service_name=settings.service_name,
+    on_event=_forward_debug_event,
+    enabled=settings.debug_audit_enabled,
+)
 app.include_router(health_router)
 
 
@@ -54,20 +71,37 @@ def _resolve_schema(item_schema: dict | None) -> dict:
 
 
 @app.post("/v1/batch/extract", response_model=BatchExtractionResponse)
-async def batch_extract(request: BatchExtractionRequest) -> BatchExtractionResponse:
+async def batch_extract(request: BatchExtractionRequest, http_request: Request) -> BatchExtractionResponse:
     assert lmdeploy and gcs
     start = time.perf_counter()
     results: list[BatchExtractionResultItem] = []
     total_prompt = 0
     total_completion = 0
+    header_trace = parse_trace_id(dict(http_request.headers))
+    header_job = parse_job_id(dict(http_request.headers))
 
     for item in request.items:
+        trace_id = item.trace_id or header_trace or header_job or item.job_id
         try:
+            gcs_start = time.perf_counter()
             image_bytes = gcs.download_to_bytes(item.gcs_uri)
+            await debug_audit.log(
+                trace_id=trace_id,
+                job_id=item.job_id,
+                step="gcs.download",
+                direction="outbound",
+                duration_ms=int((time.perf_counter() - gcs_start) * 1000),
+                status="success",
+                request={"gcs_uri": item.gcs_uri},
+                response={"bytes": len(image_bytes)},
+            )
             raw, err, pt, ct, _, _raw_text = await lmdeploy.extract_one(
                 image_bytes,
                 custom_system_prompt=item.prompt if item.prompt else None,
                 prompt_mode=item.prompt_mode,
+                trace_id=trace_id,
+                job_id=item.job_id,
+                audit=debug_audit,
             )
             total_prompt += pt
             total_completion += ct
@@ -108,6 +142,15 @@ async def batch_extract(request: BatchExtractionRequest) -> BatchExtractionRespo
                     )
                 )
         except Exception as e:
+            await debug_audit.log(
+                trace_id=trace_id,
+                job_id=item.job_id,
+                step="batch.extract_item",
+                direction="internal",
+                status="error",
+                request={"gcs_uri": item.gcs_uri, "batch_id": request.batch_id},
+                error=str(e),
+            )
             results.append(BatchExtractionResultItem(job_id=item.job_id, error=str(e)))
 
     elapsed = time.perf_counter() - start

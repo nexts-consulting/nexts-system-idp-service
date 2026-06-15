@@ -140,3 +140,22 @@ class OutboxCallback(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DebugRequestEventRow(Base):
+    __tablename__ = "debug_request_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    trace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=True
+    )
+    service: Mapped[str] = mapped_column(Text)
+    step: Mapped[str] = mapped_column(Text)
+    direction: Mapped[str] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    request: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -5,6 +5,7 @@ import uuid
 import httpx
 import redis.asyncio as redis
 import structlog
+from idp_common.debug_audit import DebugAuditClient, trace_headers
 from idp_common.job_progress import report_job_progress
 from idp_contracts.enums import JobStage, JobStatus
 from idp_contracts.jobs import (
@@ -34,6 +35,11 @@ class OrchestratorService:
             settings.circuit_failure_threshold,
             settings.circuit_open_seconds,
         )
+        self.audit = DebugAuditClient(
+            settings.app_internal_url,
+            settings.service_name,
+            enabled=settings.debug_audit_enabled,
+        )
         self._running = False
 
     async def start_job(
@@ -45,7 +51,10 @@ class OrchestratorService:
         prompt: str | None = None,
         prompt_mode: str | None = None,
         response_schema: dict | None = None,
+        trace_id: uuid.UUID | None = None,
     ) -> None:
+        if trace_id:
+            await self.redis.set_key(f"job:{job_id}:trace_id", str(trace_id))
         msg_id = await self.redis.publish(
             self.redis.PREPROCESS_TASKS,
             PreprocessTaskMessage(
@@ -53,9 +62,23 @@ class OrchestratorService:
                 tenant_id=tenant_id,
                 image_urls=image_urls,
                 invoice_type=invoice_type,
+                trace_id=trace_id,
             ).model_dump(mode="json"),
         )
         logger.info("job_enqueued", job_id=str(job_id), stream_msg_id=msg_id)
+        if trace_id:
+            await self.audit.log(
+                trace_id=trace_id,
+                job_id=job_id,
+                step="redis.publish preprocess_tasks",
+                direction="internal",
+                status="success",
+                request={
+                    "stream": self.redis.PREPROCESS_TASKS,
+                    "msg_id": msg_id,
+                    "image_count": len(image_urls),
+                },
+            )
         await self.redis.set_key(f"job:{job_id}:prompt", prompt or "")
         await self.redis.set_key(
             f"job:{job_id}:prompt_mode", prompt_mode or DEFAULT_PROMPT_MODE
@@ -122,7 +145,9 @@ class OrchestratorService:
         prompt = await self.redis.get_key(f"job:{job_id}:prompt") or ""
         prompt_mode = await self.redis.get_key(f"job:{job_id}:prompt_mode") or DEFAULT_PROMPT_MODE
         schema_raw = await self.redis.get_key(f"job:{job_id}:schema")
+        trace_raw = await self.redis.get_key(f"job:{job_id}:trace_id")
         schema = None
+        trace_id = uuid.UUID(trace_raw) if trace_raw else None
         if schema_raw:
             import json
 
@@ -136,6 +161,7 @@ class OrchestratorService:
                 prompt_mode=prompt_mode,
                 response_schema=schema,
                 invoice_type=None,
+                trace_id=str(trace_id) if trace_id else None,
             )
         )
         await self._report_progress(
@@ -213,6 +239,8 @@ class OrchestratorService:
                 metadata={"batch_id": batch_id, "batch_size": len(jobs)},
             )
         start = time.perf_counter()
+        ext_url = f"{self.settings.extraction_url}/v1/batch/extract"
+        headers = trace_headers(jobs[0].trace_id or jobs[0].job_id, jobs[0].job_id)
         try:
             async with httpx.AsyncClient(timeout=300.0) as client:
                 warm = await self.redis.get_key(self.settings.runpod_warm_key)
@@ -220,13 +248,35 @@ class OrchestratorService:
                     service=self.settings.service_name, env=self.settings.env
                 ).set(1.0 if warm == "1" else 0.0)
                 resp = await client.post(
-                    f"{self.settings.extraction_url}/v1/batch/extract",
+                    ext_url,
                     json=request.model_dump(mode="json"),
+                    headers=headers,
                 )
                 if resp.status_code >= 500:
                     raise httpx.HTTPStatusError("extraction error", request=resp.request, response=resp)
                 resp.raise_for_status()
                 data = resp.json()
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            for job in jobs:
+                tid = uuid.UUID(job.trace_id) if job.trace_id else uuid.UUID(job.job_id)
+                await self.audit.log(
+                    trace_id=tid,
+                    job_id=uuid.UUID(job.job_id),
+                    step="POST /v1/batch/extract",
+                    direction="outbound",
+                    duration_ms=elapsed_ms,
+                    status="success",
+                    request={
+                        "url": ext_url,
+                        "batch_id": batch_id,
+                        "batch_size": len(jobs),
+                    },
+                    response={
+                        "status_code": resp.status_code,
+                        "result_count": len(data.get("results", [])),
+                        "total_time_seconds": data.get("total_time_seconds"),
+                    },
+                )
             self.circuit.record_success()
             elapsed = time.perf_counter() - start
             total_tokens = sum(
@@ -268,6 +318,19 @@ class OrchestratorService:
                         model_version=request.model,
                     )
         except Exception as e:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            for job in jobs:
+                tid = uuid.UUID(job.trace_id) if job.trace_id else uuid.UUID(job.job_id)
+                await self.audit.log(
+                    trace_id=tid,
+                    job_id=uuid.UUID(job.job_id),
+                    step="POST /v1/batch/extract",
+                    direction="outbound",
+                    duration_ms=elapsed_ms,
+                    status="error",
+                    request={"url": ext_url, "batch_id": batch_id},
+                    error=str(e),
+                )
             self.circuit.record_failure()
             self.metrics.circuit_breaker.labels(
                 service=self.settings.service_name, env=self.settings.env
@@ -310,11 +373,33 @@ class OrchestratorService:
             completion_tokens=completion_tokens,
             model_version=model_version,
         )
+        complete_url = f"{self.settings.app_internal_url}/internal/v1/jobs/complete"
+        trace_raw = await self.redis.get_key(f"job:{job_id}:trace_id")
+        trace_id = uuid.UUID(trace_raw) if trace_raw else job_id
+        wh_start = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
-                    f"{self.settings.app_internal_url}/internal/v1/jobs/complete",
+                    complete_url,
                     json=webhook.model_dump(mode="json"),
+                    headers=trace_headers(trace_id, job_id),
+                )
+                wh_status = "success" if resp.status_code < 400 else "error"
+                await self.audit.log(
+                    trace_id=trace_id,
+                    job_id=job_id,
+                    step="POST /internal/v1/jobs/complete",
+                    direction="outbound",
+                    duration_ms=int((time.perf_counter() - wh_start) * 1000),
+                    status=wh_status,
+                    request={
+                        "url": complete_url,
+                        "status": status.value,
+                        "batch_id": batch_id,
+                        "error": error,
+                    },
+                    response={"status_code": resp.status_code, "body_preview": resp.text[:300]},
+                    error=None if wh_status == "success" else resp.text[:300],
                 )
                 if resp.status_code >= 400:
                     logger.error(
@@ -324,6 +409,16 @@ class OrchestratorService:
                         response_body=resp.text[:500],
                     )
         except Exception as e:
+            await self.audit.log(
+                trace_id=trace_id,
+                job_id=job_id,
+                step="POST /internal/v1/jobs/complete",
+                direction="outbound",
+                duration_ms=int((time.perf_counter() - wh_start) * 1000),
+                status="error",
+                request={"url": complete_url, "status": status.value},
+                error=str(e),
+            )
             logger.error("app_webhook_failed", job_id=str(job_id), error=str(e))
 
     def stop(self) -> None:

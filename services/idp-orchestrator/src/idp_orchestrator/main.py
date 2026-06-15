@@ -4,7 +4,8 @@ from uuid import UUID
 
 import structlog
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from idp_common.debug_audit import DebugAuditClient, DebugInboundMiddleware
 from idp_common.health import router as health_router
 from idp_common.http_middleware import HttpAccessLogMiddleware
 from idp_common.logging import configure_logging
@@ -34,6 +35,14 @@ class StartJobRequest(BaseModel):
     prompt: str | None = None
     prompt_mode: str | None = None
     response_schema: dict | None = None
+    trace_id: UUID | None = None
+
+
+debug_audit = DebugAuditClient(
+    settings.app_internal_url,
+    settings.service_name,
+    enabled=settings.debug_audit_enabled,
+)
 
 
 @asynccontextmanager
@@ -60,14 +69,29 @@ async def lifespan(app: FastAPI):
     await redis.close()
 
 
+async def _forward_debug_event(event: DebugRequestEvent) -> None:
+    await debug_audit.emit(event)
+
+
 app = FastAPI(title="IDP Orchestrator", lifespan=lifespan)
+app.add_middleware(
+    DebugInboundMiddleware,
+    service_name=settings.service_name,
+    on_event=_forward_debug_event,
+    enabled=settings.debug_audit_enabled,
+)
 app.add_middleware(HttpAccessLogMiddleware)
 app.include_router(health_router)
 
 
 @app.post("/internal/v1/jobs/start")
-async def start_job(req: StartJobRequest) -> dict:
+async def start_job(req: StartJobRequest, request: Request) -> dict:
     assert orchestrator
+    trace_id = req.trace_id
+    if not trace_id:
+        from idp_common.debug_audit import parse_trace_id
+
+        trace_id = parse_trace_id(dict(request.headers))
     await orchestrator.start_job(
         req.job_id,
         req.tenant_id,
@@ -76,6 +100,7 @@ async def start_job(req: StartJobRequest) -> dict:
         req.prompt,
         req.prompt_mode,
         req.response_schema,
+        trace_id,
     )
     return {"status": "enqueued"}
 

@@ -1,16 +1,26 @@
 import asyncio
+import time
+import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import UUID
 
 import httpx
 import structlog
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
+from idp_common.debug_audit import (
+    DebugInboundMiddleware,
+    bind_trace,
+    trace_headers,
+)
 from idp_common.health import router as health_router
 from idp_common.http_middleware import HttpAccessLogMiddleware
 from idp_common.logging import configure_logging
 from idp_common.metrics import MetricsRegistry
 from idp_common.tracing import setup_tracing
+from idp_contracts.debug import DebugRequestEvent, DebugTimelineResponse
 from idp_contracts.enums import JobStage, JobStatus
 from idp_contracts.jobs import (
     CreateJobRequest,
@@ -37,8 +47,10 @@ from idp_app.repository import (
     get_job_detail,
     get_prompt_profile,
     get_prompt_profile_by_name,
+    list_debug_events,
     list_rules,
     record_job_progress,
+    save_debug_event,
     save_extraction,
     save_fraud,
     save_job_result,
@@ -54,6 +66,16 @@ metrics = MetricsRegistry(settings.service_name)
 logger = structlog.get_logger()
 
 callback_task: asyncio.Task | None = None
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+async def _persist_debug_event(event: DebugRequestEvent) -> None:
+    if not settings.debug_audit_enabled:
+        return
+    from idp_app.db.session import SessionLocal
+
+    async with SessionLocal() as session:
+        await save_debug_event(session, event)
 
 
 async def _callback_loop() -> None:
@@ -82,6 +104,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="IDP App", lifespan=lifespan)
+app.add_middleware(
+    DebugInboundMiddleware,
+    service_name=settings.service_name,
+    on_event=_persist_debug_event,
+    enabled=settings.debug_audit_enabled,
+)
 app.add_middleware(HttpAccessLogMiddleware)
 app.include_router(health_router)
 
@@ -96,6 +124,8 @@ async def create_job_endpoint(
         validate_image_urls(req.image_urls)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+    trace_id = uuid.uuid4()
 
     prompt_profile_id = req.prompt_profile_id
     if not prompt_profile_id and settings.default_prompt_profile_name:
@@ -115,8 +145,26 @@ async def create_job_endpoint(
         req.invoice_type,
         prompt_profile_id,
         str(req.callback_url) if req.callback_url else None,
-        req.metadata,
+        {**req.metadata, "trace_id": str(trace_id)},
         idempotency_key,
+    )
+    bind_trace(trace_id, job.id)
+    await _persist_debug_event(
+        DebugRequestEvent(
+            trace_id=trace_id,
+            job_id=job.id,
+            service=settings.service_name,
+            step="POST /v1/jobs",
+            direction="inbound",
+            status="success",
+            request={
+                "tenant_id": req.tenant_id,
+                "image_urls": req.image_urls,
+                "invoice_type": req.invoice_type,
+                "prompt_mode": req.prompt_mode,
+            },
+            response={"job_id": str(job.id), "status": JobStatus.PENDING.value},
+        )
     )
     prompt = None
     prompt_mode = req.prompt_mode
@@ -126,18 +174,53 @@ async def create_job_endpoint(
         if profile:
             prompt, prompt_mode, schema = resolve_prompt_from_profile(profile, req.prompt_mode)
     async with httpx.AsyncClient(timeout=30.0) as client:
-        await client.post(
-            f"{settings.orchestrator_url}/internal/v1/jobs/start",
-            json={
-                "job_id": str(job.id),
-                "tenant_id": job.tenant_id,
-                "image_urls": job.image_urls,
-                "invoice_type": job.invoice_type,
-                "prompt": prompt,
-                "prompt_mode": prompt_mode,
-                "response_schema": schema,
-            },
-        )
+        orch_url = f"{settings.orchestrator_url}/internal/v1/jobs/start"
+        payload = {
+            "job_id": str(job.id),
+            "tenant_id": job.tenant_id,
+            "image_urls": job.image_urls,
+            "invoice_type": job.invoice_type,
+            "prompt": prompt,
+            "prompt_mode": prompt_mode,
+            "response_schema": schema,
+            "trace_id": str(trace_id),
+        }
+        orch_start = time.perf_counter()
+        try:
+            resp = await client.post(
+                orch_url,
+                json=payload,
+                headers=trace_headers(trace_id, job.id),
+            )
+            resp.raise_for_status()
+            await _persist_debug_event(
+                DebugRequestEvent(
+                    trace_id=trace_id,
+                    job_id=job.id,
+                    service=settings.service_name,
+                    step="POST /internal/v1/jobs/start",
+                    direction="outbound",
+                    duration_ms=int((time.perf_counter() - orch_start) * 1000),
+                    status="success",
+                    request={"url": orch_url, "body": payload},
+                    response={"status_code": resp.status_code, "body": resp.json()},
+                )
+            )
+        except Exception as e:
+            await _persist_debug_event(
+                DebugRequestEvent(
+                    trace_id=trace_id,
+                    job_id=job.id,
+                    service=settings.service_name,
+                    step="POST /internal/v1/jobs/start",
+                    direction="outbound",
+                    duration_ms=int((time.perf_counter() - orch_start) * 1000),
+                    status="error",
+                    request={"url": orch_url, "body": payload},
+                    error=str(e),
+                )
+            )
+            raise
     await record_job_progress(
         db,
         job.id,
@@ -149,6 +232,31 @@ async def create_job_endpoint(
         service=settings.service_name, env=settings.env, status="PENDING", tenant_id=req.tenant_id
     ).inc()
     return CreateJobResponse(job_id=job.id, status=JobStatus.PENDING)
+
+
+@app.get("/v1/jobs/{job_id}/debug-timeline", response_model=DebugTimelineResponse)
+async def get_debug_timeline(job_id: UUID, db: AsyncSession = Depends(get_db)) -> DebugTimelineResponse:
+    job = await get_job(db, job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    events = await list_debug_events(db, job_id)
+    trace_id_raw = job.metadata_.get("trace_id")
+    trace_id = UUID(trace_id_raw) if trace_id_raw else (events[0].trace_id if events else None)
+    return DebugTimelineResponse(job_id=job_id, trace_id=trace_id, events=events)
+
+
+@app.get("/debug/jobs/{job_id}")
+async def debug_job_page(job_id: UUID) -> FileResponse:
+    html_path = _STATIC_DIR / "debug_job.html"
+    if not html_path.is_file():
+        raise HTTPException(404, "Debug page not found")
+    return FileResponse(html_path, media_type="text/html")
+
+
+@app.post("/internal/v1/debug/events")
+async def ingest_debug_event(event: DebugRequestEvent, db: AsyncSession = Depends(get_db)) -> dict:
+    await save_debug_event(db, event)
+    return {"ok": True}
 
 
 @app.get("/v1/jobs/{job_id}", response_model=JobDetailResponse)

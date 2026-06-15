@@ -1,3 +1,4 @@
+from idp_contracts.debug import DebugRequestEvent, DebugTimelineEvent, DebugTimelineResponse
 from idp_contracts.enums import CircuitBreakerState, JobStage, JobStatus
 from idp_contracts.jobs import (
     BatchExtractionItem,
@@ -21,6 +22,9 @@ __all__ = [
     "CircuitBreakerState",
     "CreateJobRequest",
     "CreateJobResponse",
+    "DebugRequestEvent",
+    "DebugTimelineEvent",
+    "DebugTimelineResponse",
     "CreatePromptProfileRequest",
     "CreateRuleRequest",
     "FraudResult",

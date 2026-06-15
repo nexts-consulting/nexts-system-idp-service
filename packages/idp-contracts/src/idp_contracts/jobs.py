@@ -93,6 +93,7 @@ class PreprocessTaskMessage(BaseModel):
     tenant_id: str
     image_urls: list[str]
     invoice_type: str | None = None
+    trace_id: UUID | None = None
 
 
 class PreprocessResultMessage(BaseModel):
@@ -111,6 +112,7 @@ class BatchExtractionItem(BaseModel):
     prompt: str = ""
     prompt_mode: str | None = None
     response_schema: dict[str, Any] | None = None
+    trace_id: UUID | None = None
 
 
 class BatchExtractionRequest(BaseModel):

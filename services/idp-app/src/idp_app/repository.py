@@ -5,9 +5,11 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from idp_contracts.debug import DebugRequestEvent, DebugTimelineEvent
 from idp_contracts.enums import JobStatus
 
 from idp_app.db.models import (
+    DebugRequestEventRow,
     ExtractionResult,
     FraudResult,
     Job,
@@ -200,3 +202,48 @@ async def create_prompt_profile(session: AsyncSession, data: dict) -> PromptProf
     await session.commit()
     await session.refresh(profile)
     return profile
+
+
+async def save_debug_event(session: AsyncSession, event: DebugRequestEvent) -> DebugRequestEventRow:
+    row = DebugRequestEventRow(
+        trace_id=event.trace_id,
+        job_id=event.job_id,
+        service=event.service,
+        step=event.step,
+        direction=event.direction,
+        duration_ms=event.duration_ms,
+        status=event.status,
+        request=event.request,
+        response=event.response,
+        error=event.error,
+    )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
+async def list_debug_events(session: AsyncSession, job_id: uuid.UUID) -> list[DebugTimelineEvent]:
+    result = await session.execute(
+        select(DebugRequestEventRow)
+        .where(DebugRequestEventRow.job_id == job_id)
+        .order_by(DebugRequestEventRow.started_at, DebugRequestEventRow.id)
+    )
+    rows = result.scalars().all()
+    return [
+        DebugTimelineEvent(
+            id=row.id,
+            trace_id=row.trace_id,
+            job_id=row.job_id,
+            service=row.service,
+            step=row.step,
+            direction=row.direction,
+            started_at=row.started_at,
+            duration_ms=row.duration_ms,
+            status=row.status,
+            request=row.request or {},
+            response=row.response or {},
+            error=row.error,
+        )
+        for row in rows
+    ]

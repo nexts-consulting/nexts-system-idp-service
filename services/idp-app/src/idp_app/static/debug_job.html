@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IDP Debug Timeline</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --ok: #3dd68c;
+      --err: #f87171;
+      --accent: #60a5fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+    header h1 { margin: 0 0 0.25rem; font-size: 1.25rem; }
+    header p { margin: 0; color: var(--muted); font-size: 0.875rem; }
+    header a { color: var(--accent); }
+    main { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
+    .meta { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; font-size: 0.875rem; }
+    .meta span { background: var(--card); border: 1px solid var(--border); padding: 0.35rem 0.65rem; border-radius: 6px; }
+    .timeline { position: relative; padding-left: 1.25rem; border-left: 2px solid var(--border); }
+    .event {
+      position: relative;
+      margin-bottom: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .event::before {
+      content: "";
+      position: absolute;
+      left: -1.38rem;
+      top: 1.1rem;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+    }
+    .event.error::before { background: var(--err); }
+    .event-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .event-header:hover { background: rgba(255,255,255,0.03); }
+    .badge {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: #243044;
+      color: var(--muted);
+    }
+    .badge.success { color: var(--ok); }
+    .badge.error { color: var(--err); }
+    .step { flex: 1; font-weight: 600; font-size: 0.9rem; }
+    .time { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+    .event-body {
+      display: none;
+      padding: 0 1rem 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .event.open .event-body { display: block; }
+    pre {
+      margin: 0.5rem 0 0;
+      padding: 0.75rem;
+      background: #0b1018;
+      border-radius: 6px;
+      overflow: auto;
+      font-size: 0.75rem;
+      max-height: 280px;
+    }
+    .label { font-size: 0.75rem; color: var(--muted); margin-top: 0.75rem; }
+    #status { color: var(--muted); }
+    .empty { text-align: center; padding: 3rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Debug Request Timeline</h1>
+    <p>Job <code id="job-id">…</code> · <a id="job-api-link" href="#">View job JSON</a></p>
+  </header>
+  <main>
+    <p id="status">Loading…</p>
+    <div class="meta" id="meta" hidden></div>
+    <div class="timeline" id="timeline"></div>
+  </main>
+  <script>
+    const jobId = window.location.pathname.split("/").pop();
+    document.getElementById("job-id").textContent = jobId;
+    document.getElementById("job-api-link").href = `/v1/jobs/${jobId}`;
+
+    function fmtTime(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return d.toLocaleTimeString() + "." + String(d.getMilliseconds()).padStart(3, "0");
+    }
+
+    function render(events, traceId) {
+      const meta = document.getElementById("meta");
+      const timeline = document.getElementById("timeline");
+      const status = document.getElementById("status");
+
+      if (!events.length) {
+        status.textContent = "No debug events yet. Run a job and refresh.";
+        return;
+      }
+      status.hidden = true;
+      meta.hidden = false;
+      meta.innerHTML = `
+        <span>Events: ${events.length}</span>
+        ${traceId ? `<span>Trace: ${traceId}</span>` : ""}
+      `;
+
+      timeline.innerHTML = events.map((ev, i) => {
+        const isErr = ev.status === "error";
+        const req = JSON.stringify(ev.request || {}, null, 2);
+        const res = JSON.stringify(ev.response || {}, null, 2);
+        return `
+          <article class="event ${isErr ? "error" : ""}" data-idx="${i}">
+            <div class="event-header" onclick="this.parentElement.classList.toggle('open')">
+              <span class="badge">${ev.service}</span>
+              <span class="badge ${ev.status || ""}">${ev.direction}</span>
+              <span class="step">${ev.step}</span>
+              <span class="time">${fmtTime(ev.started_at)}${ev.duration_ms != null ? " · " + ev.duration_ms + "ms" : ""}</span>
+            </div>
+            <div class="event-body">
+              ${ev.error ? `<div class="label">Error</div><pre>${ev.error}</pre>` : ""}
+              <div class="label">Request</div>
+              <pre>${req}</pre>
+              <div class="label">Response</div>
+              <pre>${res}</pre>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function load() {
+      try {
+        const resp = await fetch(`/v1/jobs/${jobId}/debug-timeline`);
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        render(data.events || [], data.trace_id);
+      } catch (e) {
+        document.getElementById("status").textContent = "Failed to load: " + e.message;
+      }
+    }
+
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>

@@ -16,3 +16,5 @@ class BaseServiceSettings(BaseSettings):
     allowed_image_hosts: str | None = None  # comma-separated HTTPS host allowlist
     otel_exporter_endpoint: str | None = None
     prometheus_multiproc_dir: str | None = None
+    app_internal_url: str = "http://idp-app:8000"
+    debug_audit_enabled: bool = True
