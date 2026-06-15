@@ -12,6 +12,7 @@ from idp_common.logging import configure_logging
 from idp_common.metrics import MetricsRegistry
 from idp_common.redis_client import RedisStreams
 from idp_common.tracing import setup_tracing
+from idp_contracts.debug import DebugRequestEvent
 from pydantic import BaseModel
 
 from idp_orchestrator.config import Settings
