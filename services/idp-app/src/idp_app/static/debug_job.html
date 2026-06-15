@@ -16,6 +16,7 @@
       --err: #f87171;
       --warn: #fbbf24;
       --accent: #60a5fa;
+      --flow: #818cf8;
       --lane-w: 220px;
       --arrow-w: 48px;
       --sidebar-w: 300px;
@@ -34,7 +35,6 @@
       grid-template-columns: var(--sidebar-w) 1fr;
       height: 100vh;
     }
-    /* Sidebar */
     .sidebar {
       border-right: 1px solid var(--border);
       background: var(--surface);
@@ -46,16 +46,8 @@
       padding: 1rem 1rem 0.75rem;
       border-bottom: 1px solid var(--border);
     }
-    .sidebar-header h1 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-    }
-    .sidebar-header p {
-      margin: 0.25rem 0 0;
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
+    .sidebar-header h1 { margin: 0; font-size: 1rem; font-weight: 600; }
+    .sidebar-header p { margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--muted); }
     .job-search {
       margin: 0.75rem 1rem;
       padding: 0.5rem 0.65rem;
@@ -66,240 +58,174 @@
       color: var(--text);
       font-size: 0.8rem;
     }
-    .job-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0 0.5rem 1rem;
-    }
+    .job-list { flex: 1; overflow-y: auto; padding: 0 0.5rem 1rem; }
     .job-item {
-      display: block;
-      width: 100%;
-      text-align: left;
-      border: 1px solid transparent;
-      border-radius: 8px;
-      padding: 0.65rem 0.75rem;
-      margin-bottom: 0.35rem;
-      background: transparent;
-      color: var(--text);
-      cursor: pointer;
-      font-family: inherit;
+      display: block; width: 100%; text-align: left;
+      border: 1px solid transparent; border-radius: 8px;
+      padding: 0.65rem 0.75rem; margin-bottom: 0.35rem;
+      background: transparent; color: var(--text); cursor: pointer; font-family: inherit;
     }
     .job-item:hover { background: var(--surface2); }
-    .job-item.active {
-      background: #1e3a5f;
-      border-color: #2563eb;
-    }
-    .job-item-id {
-      font-size: 0.7rem;
-      font-family: ui-monospace, monospace;
-      color: var(--muted);
-      word-break: break-all;
-    }
-    .job-item-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.2rem;
-    }
+    .job-item.active { background: #1e3a5f; border-color: #2563eb; }
+    .job-item-id { font-size: 0.7rem; font-family: ui-monospace, monospace; color: var(--muted); word-break: break-all; }
+    .job-item-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; }
     .job-item-time { font-size: 0.7rem; color: var(--muted); }
     .status-pill {
-      font-size: 0.65rem;
-      padding: 0.1rem 0.4rem;
-      border-radius: 999px;
-      background: #243044;
-      color: var(--muted);
-      white-space: nowrap;
+      font-size: 0.65rem; padding: 0.1rem 0.4rem; border-radius: 999px;
+      background: #243044; color: var(--muted); white-space: nowrap;
     }
     .status-pill.COMPLETED, .status-pill.EXTRACTED { color: var(--ok); background: #064e3b33; }
     .status-pill.FAILED, .status-pill.EXTRACTION_FAILED { color: var(--err); background: #7f1d1d33; }
     .status-pill.PENDING, .status-pill.BATCHING, .status-pill.EXTRACTING { color: var(--warn); background: #78350f33; }
 
-    /* Main */
-    .main {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-      min-height: 0;
-    }
+    .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
     .toolbar {
-      padding: 0.75rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-      background: var(--surface);
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      flex-wrap: wrap;
+      padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+      background: var(--surface); display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
     }
-    .toolbar h2 {
-      margin: 0;
-      font-size: 0.95rem;
-      font-weight: 600;
-    }
-    .toolbar-meta {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      font-size: 0.75rem;
-    }
+    .toolbar h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+    .toolbar-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; font-size: 0.75rem; }
     .chip {
-      padding: 0.2rem 0.55rem;
-      border-radius: 6px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--muted);
+      padding: 0.2rem 0.55rem; border-radius: 6px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
     }
     .chip code { color: var(--accent); font-size: 0.7rem; }
-    .toolbar-actions { margin-left: auto; display: flex; gap: 0.5rem; }
+    .toolbar-actions { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
     .btn {
-      padding: 0.35rem 0.75rem;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--surface2);
-      color: var(--text);
-      font-size: 0.75rem;
-      cursor: pointer;
-      text-decoration: none;
+      padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text); font-size: 0.75rem; cursor: pointer; text-decoration: none;
     }
     .btn:hover { border-color: var(--accent); }
-    .btn-primary { background: #1d4ed8; border-color: #2563eb; }
+    .toggle-flow {
+      display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--muted); cursor: pointer;
+    }
+    .toggle-flow input { accent-color: var(--accent); }
 
-    .workflow-wrap {
-      flex: 1;
-      overflow: auto;
-      padding: 1.25rem;
-      min-height: 0;
-    }
-    .workflow {
-      display: flex;
-      align-items: stretch;
-      min-width: max-content;
-      padding-bottom: 0.5rem;
-    }
-    .lane {
-      width: var(--lane-w);
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .lane-header {
-      text-align: center;
-      padding: 0.65rem 0.5rem;
+    /* Sequence strip */
+    .flow-strip-wrap {
+      border-bottom: 1px solid var(--border);
       background: var(--surface);
-      border: 1px solid var(--border);
+      padding: 0.5rem 1.25rem;
+      overflow-x: auto;
+    }
+    .flow-strip {
+      display: flex; align-items: center; gap: 0; min-width: max-content;
+      font-size: 0.68rem;
+    }
+    .flow-step {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      padding: 0.25rem 0.5rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface2);
+      cursor: pointer; white-space: nowrap; transition: border-color 0.15s;
+    }
+    .flow-step:hover, .flow-step.active { border-color: var(--accent); background: #1e3a5f; }
+    .flow-step.error { border-color: var(--err); }
+    .flow-step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.1rem; height: 1.1rem; border-radius: 50%;
+      background: var(--flow); color: #fff; font-size: 0.6rem; font-weight: 700;
+    }
+    .flow-arrow {
+      color: var(--muted); padding: 0 0.25rem; font-size: 0.75rem; user-select: none;
+    }
+
+    .workflow-wrap { flex: 1; overflow: auto; padding: 1.25rem; min-height: 0; }
+    .workflow-stage { position: relative; min-width: max-content; }
+    .flow-svg {
+      position: absolute; top: 0; left: 0;
+      pointer-events: none; z-index: 2; overflow: visible;
+    }
+    .flow-svg path {
+      fill: none; stroke: var(--flow); stroke-width: 2;
+      stroke-dasharray: 6 4; opacity: 0.75;
+    }
+    .flow-svg path.error-path { stroke: var(--err); }
+    .flow-svg circle { fill: var(--flow); }
+    .flow-svg text {
+      fill: var(--text); font-size: 9px; font-family: ui-monospace, monospace;
+    }
+
+    .workflow {
+      display: flex; align-items: stretch; min-width: max-content;
+      padding-bottom: 0.5rem; position: relative; z-index: 1;
+    }
+    .lane { width: var(--lane-w); flex-shrink: 0; display: flex; flex-direction: column; }
+    .lane-header {
+      text-align: center; padding: 0.65rem 0.5rem;
+      background: var(--surface); border: 1px solid var(--border);
       border-radius: 10px 10px 0 0;
     }
-    .lane-header .name {
-      font-weight: 700;
-      font-size: 0.85rem;
-    }
-    .lane-header .sub {
-      font-size: 0.65rem;
-      color: var(--muted);
-      margin-top: 0.15rem;
-    }
+    .lane-header .name { font-weight: 700; font-size: 0.85rem; }
+    .lane-header .sub { font-size: 0.65rem; color: var(--muted); margin-top: 0.15rem; }
     .lane-body {
-      flex: 1;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-top: none;
-      border-radius: 0 0 10px 10px;
-      padding: 0.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-      min-height: 200px;
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-top: none; border-radius: 0 0 10px 10px;
+      padding: 0.5rem; display: flex; flex-direction: column; gap: 0.45rem; min-height: 200px;
     }
     .arrow-col {
-      width: var(--arrow-w);
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted);
+      width: var(--arrow-w); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; color: var(--muted);
     }
     .arrow-col svg { opacity: 0.6; }
 
     .ev-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.5rem 0.55rem;
-      cursor: pointer;
-      transition: border-color 0.15s;
+      position: relative;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.5rem 0.55rem 0.5rem 1.6rem;
+      cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
       font-size: 0.72rem;
     }
     .ev-card:hover { border-color: var(--accent); }
     .ev-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .ev-card.flow-highlight { box-shadow: 0 0 0 2px var(--flow); }
     .ev-card.error { border-left: 3px solid var(--err); }
     .ev-card.success { border-left: 3px solid var(--ok); }
-    .ev-step {
-      font-weight: 600;
-      font-size: 0.72rem;
-      line-height: 1.3;
-      margin-bottom: 0.25rem;
-      word-break: break-word;
+    .ev-seq {
+      position: absolute; left: 0.4rem; top: 0.45rem;
+      width: 1.15rem; height: 1.15rem; border-radius: 50%;
+      background: var(--flow); color: #fff;
+      font-size: 0.62rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
     }
+    .ev-card.error .ev-seq { background: var(--err); }
+    .intra-arrow {
+      text-align: center; color: var(--muted); font-size: 0.65rem; line-height: 1;
+      opacity: 0.7;
+    }
+    .intra-arrow span { font-size: 0.55rem; color: var(--flow); }
+    .ev-step { font-weight: 600; font-size: 0.72rem; line-height: 1.3; margin-bottom: 0.25rem; word-break: break-word; }
     .ev-meta {
-      color: var(--muted);
-      font-size: 0.65rem;
-      display: flex;
-      justify-content: space-between;
-      gap: 0.25rem;
+      color: var(--muted); font-size: 0.65rem;
+      display: flex; justify-content: space-between; gap: 0.25rem;
     }
-    .lane-empty {
-      color: var(--muted);
-      font-size: 0.7rem;
-      text-align: center;
-      padding: 1rem 0.25rem;
-      font-style: italic;
-    }
+    .lane-empty { color: var(--muted); font-size: 0.7rem; text-align: center; padding: 1rem 0.25rem; font-style: italic; }
 
     .detail-panel {
-      border-top: 1px solid var(--border);
-      background: var(--surface);
-      max-height: 240px;
-      overflow: auto;
-      padding: 0.75rem 1.25rem;
-      font-size: 0.75rem;
+      border-top: 1px solid var(--border); background: var(--surface);
+      max-height: 260px; overflow: auto; padding: 0.75rem 1.25rem; font-size: 0.75rem;
     }
-    .detail-panel h3 {
-      margin: 0 0 0.5rem;
-      font-size: 0.8rem;
+    .detail-header {
+      display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;
     }
-    .detail-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
+    .detail-header h3 { margin: 0; font-size: 0.8rem; flex: 1; }
+    .detail-nav { display: flex; gap: 0.35rem; }
+    .detail-nav .btn { padding: 0.25rem 0.55rem; font-size: 0.68rem; }
+    .detail-nav .btn:disabled { opacity: 0.35; cursor: default; }
+    .detail-seq-chip {
+      font-size: 0.68rem; padding: 0.15rem 0.5rem; border-radius: 6px;
+      background: #312e81; color: #c7d2fe; border: 1px solid #4338ca;
     }
-    @media (max-width: 900px) {
-      .detail-grid { grid-template-columns: 1fr; }
-    }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
     pre {
-      margin: 0;
-      padding: 0.6rem;
-      background: var(--bg);
-      border-radius: 6px;
-      overflow: auto;
-      max-height: 160px;
-      font-size: 0.68rem;
+      margin: 0; padding: 0.6rem; background: var(--bg);
+      border-radius: 6px; overflow: auto; max-height: 160px; font-size: 0.68rem;
     }
     .placeholder {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted);
-      font-size: 0.9rem;
-      padding: 2rem;
-      text-align: center;
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 0.9rem; padding: 2rem; text-align: center;
     }
-    .empty-jobs {
-      padding: 1.5rem 1rem;
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.8rem;
-    }
+    .empty-jobs { padding: 1.5rem 1rem; text-align: center; color: var(--muted); font-size: 0.8rem; }
   </style>
 </head>
 <body>
@@ -318,18 +244,33 @@
         <h2 id="toolbar-title">Workflow</h2>
         <div class="toolbar-meta" id="toolbar-meta"></div>
         <div class="toolbar-actions">
+          <label class="toggle-flow"><input type="checkbox" id="toggle-flow" checked /> Luồng nối</label>
           <button class="btn" id="btn-refresh" type="button">Refresh</button>
           <a class="btn" id="link-json" href="#" target="_blank">Job JSON</a>
         </div>
       </div>
 
+      <div class="flow-strip-wrap" id="flow-strip-wrap" hidden>
+        <div class="flow-strip" id="flow-strip"></div>
+      </div>
+
       <div class="workflow-wrap" id="workflow-wrap">
         <div class="placeholder" id="placeholder">← Chọn một job từ danh sách bên trái</div>
-        <div class="workflow" id="workflow" hidden></div>
+        <div class="workflow-stage" id="workflow-stage" hidden>
+          <svg class="flow-svg" id="flow-svg"></svg>
+          <div class="workflow" id="workflow"></div>
+        </div>
       </div>
 
       <div class="detail-panel" id="detail-panel" hidden>
-        <h3 id="detail-title">Event detail</h3>
+        <div class="detail-header">
+          <span class="detail-seq-chip" id="detail-seq"></span>
+          <h3 id="detail-title">Event detail</h3>
+          <div class="detail-nav">
+            <button class="btn" id="btn-prev" type="button" disabled>← Trước</button>
+            <button class="btn" id="btn-next" type="button" disabled>Sau →</button>
+          </div>
+        </div>
         <div class="detail-grid">
           <div>
             <div style="color:var(--muted);margin-bottom:0.25rem">Request</div>
@@ -353,14 +294,14 @@
       { id: "lmdeploy", label: "LMDeploy", sub: "RunPod VLM" },
     ];
 
-    const ARROW_SVG = `<svg width="32" height="24" viewBox="0 0 32 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M0 12H24M24 12L16 4M24 12L16 20" stroke="currentColor" stroke-width="2"/>
-    </svg>`;
+    const ARROW_SVG = `<svg width="32" height="24" viewBox="0 0 32 24" fill="none"><path d="M0 12H24M24 12L16 4M24 12L16 20" stroke="currentColor" stroke-width="2"/></svg>`;
 
     let allJobs = [];
     let selectedJobId = null;
     let selectedEventId = null;
+    let sortedEvents = [];
     let pollTimer = null;
+    let showFlowLines = true;
 
     function parseJobIdFromPath() {
       const m = window.location.pathname.match(/\/debug\/jobs\/([0-9a-f-]{36})/i);
@@ -373,14 +314,13 @@
       return d.toLocaleTimeString() + "." + String(d.getMilliseconds()).padStart(3, "0");
     }
 
-    function fmtDate(iso) {
-      if (!iso) return "";
-      return new Date(iso).toLocaleString();
-    }
-
     function laneForEvent(ev) {
       if ((ev.step || "").toLowerCase().includes("lmdeploy")) return "lmdeploy";
       return ev.service;
+    }
+
+    function laneLabel(laneId) {
+      return (LANES.find((l) => l.id === laneId) || { label: laneId }).label;
     }
 
     function shortStep(step) {
@@ -389,15 +329,33 @@
         .replace("POST /internal/v1/jobs/start", "start job")
         .replace("POST /v1/batch/extract", "batch extract")
         .replace("POST /internal/v1/jobs/complete", "complete webhook")
-        .replace("POST /v1/jobs", "create job");
+        .replace("POST /v1/jobs", "create job")
+        .replace("redis.publish preprocess_tasks", "redis → preprocess")
+        .replace("redis.consume preprocess_tasks", "redis ← preprocess")
+        .replace("redis.publish preprocess_results", "redis → orch");
+    }
+
+    function sortEvents(events) {
+      return [...events].sort((a, b) => {
+        const ta = new Date(a.started_at).getTime();
+        const tb = new Date(b.started_at).getTime();
+        if (ta !== tb) return ta - tb;
+        return a.id - b.id;
+      });
+    }
+
+    function assignSequence(events) {
+      const sorted = sortEvents(events);
+      sorted.forEach((ev, i) => { ev._seq = i + 1; });
+      return sorted;
     }
 
     function selectJob(jobId, pushUrl = true) {
       selectedJobId = jobId;
       selectedEventId = null;
+      sortedEvents = [];
       if (pushUrl) {
-        const url = jobId ? `/debug/jobs/${jobId}` : "/debug";
-        window.history.pushState({}, "", url);
+        window.history.pushState({}, "", jobId ? `/debug/jobs/${jobId}` : "/debug");
       }
       document.querySelectorAll(".job-item").forEach((el) => {
         el.classList.toggle("active", el.dataset.jobId === jobId);
@@ -408,7 +366,8 @@
 
     function showPlaceholder() {
       document.getElementById("placeholder").hidden = false;
-      document.getElementById("workflow").hidden = true;
+      document.getElementById("workflow-stage").hidden = true;
+      document.getElementById("flow-strip-wrap").hidden = true;
       document.getElementById("toolbar").hidden = true;
       document.getElementById("detail-panel").hidden = true;
     }
@@ -417,57 +376,70 @@
       const q = (document.getElementById("job-search").value || "").toLowerCase();
       const filtered = jobs.filter((j) => {
         if (!q) return true;
-        return (
-          j.job_id.toLowerCase().includes(q) ||
-          (j.status || "").toLowerCase().includes(q) ||
-          (j.tenant_id || "").toLowerCase().includes(q)
-        );
+        return j.job_id.toLowerCase().includes(q) || (j.status || "").toLowerCase().includes(q);
       });
       const el = document.getElementById("job-list");
       if (!filtered.length) {
-        el.innerHTML = `<div class="empty-jobs">${jobs.length ? "Không khớp tìm kiếm" : "Chưa có job"}</div>`;
+        el.innerHTML = `<div class="empty-jobs">${jobs.length ? "Không khớp" : "Chưa có job"}</div>`;
         return;
       }
-      el.innerHTML = filtered
-        .map(
-          (j) => `
-        <button type="button" class="job-item ${j.job_id === selectedJobId ? "active" : ""}"
-                data-job-id="${j.job_id}">
+      el.innerHTML = filtered.map((j) => `
+        <button type="button" class="job-item ${j.job_id === selectedJobId ? "active" : ""}" data-job-id="${j.job_id}">
           <div class="job-item-row">
             <span class="status-pill ${j.status}">${j.status}</span>
             <span class="job-item-time">${fmtTime(j.created_at)}</span>
           </div>
           <div class="job-item-id">${j.job_id}</div>
-        </button>`
-        )
-        .join("");
+        </button>`).join("");
       el.querySelectorAll(".job-item").forEach((btn) => {
         btn.addEventListener("click", () => selectJob(btn.dataset.jobId));
       });
     }
 
+    function renderFlowStrip(events) {
+      const wrap = document.getElementById("flow-strip-wrap");
+      const strip = document.getElementById("flow-strip");
+      if (!events.length) { wrap.hidden = true; return; }
+      wrap.hidden = false;
+      strip.innerHTML = events.map((ev, i) => {
+        const arrow = i > 0 ? `<span class="flow-arrow" title="#${ev._seq - 1} → #${ev._seq}">→</span>` : "";
+        const cls = [
+          "flow-step",
+          ev.status === "error" ? "error" : "",
+          ev.id === selectedEventId ? "active" : "",
+        ].filter(Boolean).join(" ");
+        return `${arrow}<button type="button" class="${cls}" data-event-id="${ev.id}" title="${ev.step}">
+          <span class="flow-step-num">${ev._seq}</span>
+          <span>${laneLabel(laneForEvent(ev))}: ${shortStep(ev.step)}</span>
+        </button>`;
+      }).join("");
+      strip.querySelectorAll(".flow-step").forEach((btn) => {
+        btn.addEventListener("click", () => focusEvent(Number(btn.dataset.eventId)));
+      });
+    }
+
     function renderWorkflow(events, traceId) {
       document.getElementById("placeholder").hidden = true;
-      document.getElementById("workflow").hidden = false;
+      document.getElementById("workflow-stage").hidden = false;
       document.getElementById("toolbar").hidden = false;
+
+      sortedEvents = assignSequence(events);
+      renderFlowStrip(sortedEvents);
 
       document.getElementById("toolbar-title").textContent = `Job ${selectedJobId.slice(0, 8)}…`;
       document.getElementById("toolbar-meta").innerHTML = `
-        <span class="chip">Events: <strong>${events.length}</strong></span>
-        ${traceId ? `<span class="chip">Trace: <code>${String(traceId).slice(0, 8)}…</code></span>` : ""}
-      `;
+        <span class="chip">Events: <strong>${sortedEvents.length}</strong></span>
+        <span class="chip">Thứ tự: <strong>1 → ${sortedEvents.length}</strong></span>
+        ${traceId ? `<span class="chip">Trace: <code>${String(traceId).slice(0, 8)}…</code></span>` : ""}`;
       document.getElementById("link-json").href = `/v1/jobs/${selectedJobId}`;
 
       const byLane = {};
       LANES.forEach((l) => (byLane[l.id] = []));
-      events.forEach((ev) => {
+      sortedEvents.forEach((ev) => {
         const lane = laneForEvent(ev);
         if (!byLane[lane]) byLane[lane] = [];
         byLane[lane].push(ev);
       });
-      Object.values(byLane).forEach((arr) =>
-        arr.sort((a, b) => new Date(a.started_at) - new Date(b.started_at))
-      );
 
       const wf = document.getElementById("workflow");
       wf.innerHTML = "";
@@ -488,31 +460,35 @@
             <div class="sub">${lane.sub}</div>
           </div>
           <div class="lane-body" data-lane="${lane.id}">
-            ${
-              items.length
-                ? items.map((ev) => renderEventCard(ev)).join("")
-                : `<div class="lane-empty">—</div>`
-            }
+            ${items.length ? renderLaneItems(items) : `<div class="lane-empty">—</div>`}
           </div>`;
         wf.appendChild(col);
       });
 
       wf.querySelectorAll(".ev-card").forEach((card) => {
-        card.addEventListener("click", () => {
-          const id = Number(card.dataset.eventId);
-          selectedEventId = id;
-          wf.querySelectorAll(".ev-card").forEach((c) => c.classList.remove("selected"));
-          card.classList.add("selected");
-          const ev = events.find((e) => e.id === id);
-          if (ev) showEventDetail(ev);
-        });
+        card.addEventListener("click", () => focusEvent(Number(card.dataset.eventId)));
       });
+
+      requestAnimationFrame(() => {
+        drawFlowLines(sortedEvents);
+        if (selectedEventId) highlightEvent(selectedEventId);
+      });
+    }
+
+    function renderLaneItems(items) {
+      return items.map((ev, i) => {
+        const intra = i > 0
+          ? `<div class="intra-arrow" title="#${items[i-1]._seq} → #${ev._seq}">↓ <span>#${items[i-1]._seq}→${ev._seq}</span></div>`
+          : "";
+        return intra + renderEventCard(ev);
+      }).join("");
     }
 
     function renderEventCard(ev) {
       const st = ev.status === "error" ? "error" : ev.status === "success" ? "success" : "";
       return `
-        <div class="ev-card ${st}" data-event-id="${ev.id}" title="${ev.step}">
+        <div class="ev-card ${st}" data-event-id="${ev.id}" data-seq="${ev._seq}" title="#${ev._seq}: ${ev.step}">
+          <span class="ev-seq">${ev._seq}</span>
           <div class="ev-step">${shortStep(ev.step)}</div>
           <div class="ev-meta">
             <span>${ev.direction}</span>
@@ -522,6 +498,76 @@
         </div>`;
     }
 
+    function drawFlowLines(events) {
+      const svg = document.getElementById("flow-svg");
+      const stage = document.getElementById("workflow-stage");
+      if (!showFlowLines || events.length < 2) {
+        svg.innerHTML = "";
+        svg.setAttribute("width", 0);
+        svg.setAttribute("height", 0);
+        return;
+      }
+
+      const stageW = stage.scrollWidth;
+      const stageH = stage.scrollHeight;
+      svg.setAttribute("width", stageW);
+      svg.setAttribute("height", stageH);
+      svg.style.width = stageW + "px";
+      svg.style.height = stageH + "px";
+
+      const stageRect = stage.getBoundingClientRect();
+      let markup = `<defs>
+        <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#818cf8"/>
+        </marker>
+      </defs>`;
+
+      for (let i = 0; i < events.length - 1; i++) {
+        const fromEl = document.querySelector(`.ev-card[data-event-id="${events[i].id}"]`);
+        const toEl = document.querySelector(`.ev-card[data-event-id="${events[i + 1].id}"]`);
+        if (!fromEl || !toEl) continue;
+
+        const fr = fromEl.getBoundingClientRect();
+        const tr = toEl.getBoundingClientRect();
+        const x1 = fr.right - stageRect.left + stage.scrollLeft - 4;
+        const y1 = fr.top + fr.height / 2 - stageRect.top + stage.scrollTop;
+        const x2 = tr.left - stageRect.left + stage.scrollLeft + 4;
+        const y2 = tr.top + tr.height / 2 - stageRect.top + stage.scrollTop;
+        const dx = Math.abs(x2 - x1) * 0.45;
+        const err = events[i].status === "error" || events[i + 1].status === "error";
+        const pathCls = err ? "error-path" : "";
+        const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        markup += `<path class="${pathCls}" d="${d}" marker-end="url(#arrowhead)"/>`;
+        markup += `<text x="${mx}" y="${my - 4}" text-anchor="middle">${events[i]._seq}→${events[i + 1]._seq}</text>`;
+      }
+      svg.innerHTML = markup;
+    }
+
+    function focusEvent(eventId) {
+      selectedEventId = eventId;
+      highlightEvent(eventId);
+      const ev = sortedEvents.find((e) => e.id === eventId);
+      if (ev) {
+        showEventDetail(ev);
+        document.querySelector(`.ev-card[data-event-id="${eventId}"]`)?.scrollIntoView({
+          behavior: "smooth", block: "nearest", inline: "center",
+        });
+      }
+      renderFlowStrip(sortedEvents);
+    }
+
+    function highlightEvent(eventId) {
+      document.querySelectorAll(".ev-card").forEach((c) => {
+        c.classList.toggle("selected", Number(c.dataset.eventId) === eventId);
+        c.classList.toggle("flow-highlight", Number(c.dataset.eventId) === eventId);
+      });
+      document.querySelectorAll(".flow-step").forEach((s) => {
+        s.classList.toggle("active", Number(s.dataset.eventId) === eventId);
+      });
+    }
+
     function escapeHtml(s) {
       return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
@@ -529,25 +575,30 @@
     function showEventDetail(ev) {
       const panel = document.getElementById("detail-panel");
       panel.hidden = false;
-      document.getElementById("detail-title").textContent = `${ev.service} · ${ev.step}`;
+      const idx = sortedEvents.findIndex((e) => e.id === ev.id);
+      document.getElementById("detail-seq").textContent = `Bước ${ev._seq} / ${sortedEvents.length}`;
+      document.getElementById("detail-title").textContent = `${laneLabel(laneForEvent(ev))} · ${ev.step}`;
       document.getElementById("detail-req").textContent = JSON.stringify(ev.request || {}, null, 2);
       document.getElementById("detail-res").textContent = JSON.stringify(
-        { ...(ev.response || {}), ...(ev.error ? { error: ev.error } : {}) },
-        null,
-        2
+        { ...(ev.response || {}), ...(ev.error ? { error: ev.error } : {}) }, null, 2
       );
+      const prev = document.getElementById("btn-prev");
+      const next = document.getElementById("btn-next");
+      prev.disabled = idx <= 0;
+      next.disabled = idx >= sortedEvents.length - 1;
+      prev.onclick = () => idx > 0 && focusEvent(sortedEvents[idx - 1].id);
+      next.onclick = () => idx < sortedEvents.length - 1 && focusEvent(sortedEvents[idx + 1].id);
     }
 
     async function loadJobs() {
       try {
         const resp = await fetch("/v1/jobs?limit=50");
         if (!resp.ok) throw new Error(await resp.text());
-        const data = await resp.json();
-        allJobs = data.jobs || [];
+        allJobs = (await resp.json()).jobs || [];
         renderJobList(allJobs);
       } catch (e) {
         document.getElementById("job-list").innerHTML =
-          `<div class="empty-jobs">Lỗi tải jobs: ${escapeHtml(e.message)}</div>`;
+          `<div class="empty-jobs">Lỗi: ${escapeHtml(e.message)}</div>`;
       }
     }
 
@@ -558,34 +609,26 @@
         if (!resp.ok) throw new Error(await resp.text());
         const data = await resp.json();
         renderWorkflow(data.events || [], data.trace_id);
-        if (selectedEventId) {
-          const ev = (data.events || []).find((e) => e.id === selectedEventId);
-          if (ev) showEventDetail(ev);
-        }
+        if (selectedEventId) focusEvent(selectedEventId);
       } catch (e) {
         document.getElementById("workflow").innerHTML =
-          `<div class="placeholder">Lỗi timeline: ${escapeHtml(e.message)}</div>`;
-        document.getElementById("workflow").hidden = false;
+          `<div class="placeholder">Lỗi: ${escapeHtml(e.message)}</div>`;
       }
     }
 
     function startPolling() {
       if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(() => {
-        loadJobs();
-        if (selectedJobId) loadTimeline();
-      }, 5000);
+      pollTimer = setInterval(() => { loadJobs(); if (selectedJobId) loadTimeline(); }, 5000);
     }
 
     document.getElementById("job-search").addEventListener("input", () => renderJobList(allJobs));
-    document.getElementById("btn-refresh").addEventListener("click", () => {
-      loadJobs();
-      loadTimeline();
+    document.getElementById("btn-refresh").addEventListener("click", () => { loadJobs(); loadTimeline(); });
+    document.getElementById("toggle-flow").addEventListener("change", (e) => {
+      showFlowLines = e.target.checked;
+      drawFlowLines(sortedEvents);
     });
-    window.addEventListener("popstate", () => {
-      const id = parseJobIdFromPath();
-      selectJob(id, false);
-    });
+    window.addEventListener("resize", () => drawFlowLines(sortedEvents));
+    window.addEventListener("popstate", () => selectJob(parseJobIdFromPath(), false));
 
     (async function init() {
       await loadJobs();
