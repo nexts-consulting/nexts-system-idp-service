@@ -116,10 +116,16 @@
       display: inline-flex; align-items: center; gap: 0.3rem;
       padding: 0.25rem 0.5rem; border-radius: 6px;
       border: 1px solid var(--border); background: var(--surface2);
-      cursor: pointer; white-space: nowrap; transition: border-color 0.15s;
+      color: var(--text);
+      font-family: inherit;
+      font-size: inherit;
+      cursor: pointer; white-space: nowrap; transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
-    .flow-step:hover, .flow-step.active { border-color: var(--accent); background: #1e3a5f; }
-    .flow-step.error { border-color: var(--err); }
+    .flow-step:hover, .flow-step.active {
+      border-color: var(--accent); background: #1e3a5f; color: #f0f4ff;
+    }
+    .flow-step.error { border-color: var(--err); color: #fecaca; }
+    .flow-step.error:hover, .flow-step.error.active { background: #450a0a; color: #fee2e2; }
     .flow-step-num {
       display: inline-flex; align-items: center; justify-content: center;
       width: 1.1rem; height: 1.1rem; border-radius: 50%;
@@ -255,7 +261,7 @@
       </div>
 
       <div class="workflow-wrap" id="workflow-wrap">
-        <div class="placeholder" id="placeholder">← Chọn một job từ danh sách bên trái</div>
+        <div class="placeholder" id="placeholder"></div>
         <div class="workflow-stage" id="workflow-stage" hidden>
           <svg class="flow-svg" id="flow-svg"></svg>
           <div class="workflow" id="workflow"></div>
