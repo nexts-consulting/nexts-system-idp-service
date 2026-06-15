@@ -16,6 +16,19 @@ unset PORT
 # RunPod images often have a broken grpc wheel; leave OTEL off unless collector is reachable.
 export OTEL_EXPORTER_ENDPOINT="${OTEL_EXPORTER_ENDPOINT:-}"
 
+# Debug audit posts to idp-app. Hostname "idp-app" only works inside GCP docker compose.
+# From RunPod: set APP_INTERNAL_URL to GCP VM URL, or leave DEBUG_AUDIT_ENABLED=false.
+export APP_INTERNAL_URL="${APP_INTERNAL_URL:-}"
+export DEBUG_AUDIT_ENABLED="${DEBUG_AUDIT_ENABLED:-false}"
+if [[ "${DEBUG_AUDIT_ENABLED}" == "true" ]]; then
+  if [[ -z "${APP_INTERNAL_URL}" || "${APP_INTERNAL_URL}" == *"idp-app"* ]]; then
+    echo "WARN: DEBUG_AUDIT_ENABLED=true but APP_INTERNAL_URL must be GCP app VM URL (e.g. http://VM_IP:8000). Disabling debug audit." >&2
+    export DEBUG_AUDIT_ENABLED=false
+  else
+    echo "Debug audit enabled → ${APP_INTERNAL_URL}/internal/v1/debug/events"
+  fi
+fi
+
 # Ensure workspace packages are importable (editable install recommended once per pod).
 if ! python -c "import idp_extraction" 2>/dev/null; then
   echo "Installing idp-extraction and workspace deps..."
