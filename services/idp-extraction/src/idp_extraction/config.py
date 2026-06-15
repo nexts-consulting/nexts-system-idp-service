@@ -10,9 +10,9 @@ class Settings(BaseServiceSettings):
     port: int = Field(default=8003, validation_alias="IDP_EXTRACTION_PORT")
     lmdeploy_url: str = "http://localhost:23333"
     lmdeploy_api_key: str = "EMPTY"
-    mock_mode: bool = True
+    mock_mode: bool = False
     model_name: str = "OpenGVLab/InternVL3_5-8B-Flash"
     default_prompt_mode: str = "reasoning_vir"
-    max_new_tokens: int = 1024
+    max_new_tokens: int = 4096
     temperature: float = 0.0
     pushgateway_url: str | None = None
